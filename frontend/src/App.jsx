@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard"
 import UserRegistrations from "./pages/UserRegistrations"
 import ProtectedRoute from "./components/ProtectedRoute"
 import Landing from "./pages/Landing"
+import AttendeeHub from "./pages/AttendeeHub"
 
 function App() {
   return (
@@ -19,6 +20,14 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/events/:id" element={<EventDetail />} />
+        <Route
+          path="/attendee"
+          element={
+            <ProtectedRoute roles={["attendee"]}>
+              <AttendeeHub />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/create-event"
           element={

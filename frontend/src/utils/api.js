@@ -35,8 +35,8 @@ export const authAPI = {
 }
 
 export const eventsAPI = {
-  getEvents: (page = 1, limit = 10, search = "", category = "") =>
-    api.get("/events", { params: { page, limit, search, category } }),
+  getEvents: (page = 1, limit = 10, search = "", category = "", eventType = "", area = "", accessType = "") =>
+    api.get("/events", { params: { page, limit, search, category, eventType, area, accessType } }),
   getEventById: (id) => api.get(`/events/${id}`),
   createEvent: (data) => api.post("/events", data),
   updateEvent: (id, data) => api.put(`/events/${id}`, data),
@@ -55,6 +55,7 @@ export const registrationsAPI = {
   registerEvent: (eventId) => api.post("/registrations", { eventId }),
   cancelRegistration: (id) => api.delete(`/registrations/${id}`),
   getUserRegistrations: (page = 1, limit = 10) => api.get("/registrations", { params: { page, limit } }),
+  getUserInvitations: (page = 1, limit = 20) => api.get("/registrations/invitations", { params: { page, limit } }),
   getDashboardStats: () => api.get("/registrations/stats/dashboard"),
 }
 

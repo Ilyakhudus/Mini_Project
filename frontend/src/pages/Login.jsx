@@ -24,7 +24,12 @@ export default function Login() {
     try {
       const response = await authAPI.login(formData)
       login(response.data.user, response.data.token)
-      navigate("/")
+
+      if (response.data.user.role === "organizer" || response.data.user.role === "admin") {
+        navigate("/dashboard")
+      } else {
+        navigate("/attendee")
+      }
     } catch (err) {
       setError(err.response?.data?.error || "Login failed")
     } finally {

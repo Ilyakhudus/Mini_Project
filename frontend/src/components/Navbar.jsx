@@ -24,6 +24,11 @@ export default function Navbar() {
             {user ? (
               <>
                 <span className="text-sm">Welcome, {user.name}</span>
+                {user.role === "attendee" && (
+                  <Link to="/attendee" className="hover:text-blue-200">
+                    My Hub
+                  </Link>
+                )}
                 {user.role === "organizer" || user.role === "admin" ? (
                   <>
                     <Link to="/dashboard" className="hover:text-blue-200">
