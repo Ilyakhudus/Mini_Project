@@ -16,6 +16,21 @@ const auth = (req, res, next) => {
   }
 }
 
+const optionalAuth = (req, res, next) => {
+  try {
+    const token = req.header("Authorization")?.replace("Bearer ", "")
+
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key")
+      req.user = decoded
+    }
+    next()
+  } catch (error) {
+    // Token invalid, but continue without auth
+    next()
+  }
+}
+
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -25,4 +40,4 @@ const authorize = (...roles) => {
   }
 }
 
-module.exports = { auth, authorize }
+module.exports = { auth, optionalAuth, authorize }

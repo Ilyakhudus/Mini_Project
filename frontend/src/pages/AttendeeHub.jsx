@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { eventsAPI, registrationsAPI } from "../utils/api"
 import { useAuth } from "../hooks/useAuth"
+import { formatDate } from "../utils/dateUtils"
 
 export default function AttendeeHub() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState("invites")
   const [invites, setInvites] = useState([])
   const [exploreEvents, setExploreEvents] = useState([])
@@ -31,15 +33,21 @@ export default function AttendeeHub() {
   const fetchData = async () => {
     try {
       setLoading(true)
+      console.log("[v0] Fetching attendee data...")
 
       const invitesResponse = await registrationsAPI.getUserInvitations(1, 20)
-      setInvites(invitesResponse.data.invitations)
+      console.log("[v0] Invitations response:", invitesResponse.data)
+      setInvites(invitesResponse.data.invitations || [])
 
       // Fetch my registered events
+      console.log("[v0] Fetching registered events...")
       const myEventsResponse = await registrationsAPI.getUserRegistrations(1, 20)
-      setMyEvents(myEventsResponse.data.registrations)
+      console.log("[v0] Registered events response:", myEventsResponse.data)
+      console.log("[v0] Full registrations array:", JSON.stringify(myEventsResponse.data.registrations, null, 2))
+      setMyEvents(myEventsResponse.data.registrations || [])
     } catch (err) {
-      console.error("Failed to fetch attendee data", err)
+      console.error("[v0] Failed to fetch attendee data", err)
+      console.error("[v0] Error details:", err.response?.data)
     } finally {
       setLoading(false)
     }
@@ -47,10 +55,12 @@ export default function AttendeeHub() {
 
   const fetchExploreEvents = async () => {
     try {
+      console.log("[v0] Fetching explore events with filters:", filters, "search:", searchQuery)
       const response = await eventsAPI.getEvents(1, 20, searchQuery, "", filters.eventType, filters.area, "")
+      console.log("[v0] Explore events response:", response.data)
       setExploreEvents(response.data.events)
     } catch (err) {
-      console.error("Failed to fetch explore events", err)
+      console.error("[v0] Failed to fetch explore events", err)
     }
   }
 
@@ -167,7 +177,7 @@ export default function AttendeeHub() {
                         <h3 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h3>
                         <p className="text-gray-600 text-sm mb-4 line-clamp-2">{event.description}</p>
                         <div className="space-y-2 text-sm text-gray-600 mb-4">
-                          <p>📅 {new Date(event.date).toLocaleDateString()}</p>
+                          <p>📅 {formatDate(event.date)}</p>
                           <p>🕐 {event.time}</p>
                           <p>📍 {event.venue}</p>
                           <p>🏷️ {event.area}</p>
@@ -286,7 +296,7 @@ export default function AttendeeHub() {
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h3>
                       <p className="text-gray-600 text-sm mb-4 line-clamp-2">{event.description}</p>
                       <div className="space-y-2 text-sm text-gray-600 mb-4">
-                        <p>📅 {new Date(event.date).toLocaleDateString()}</p>
+                        <p>📅 {formatDate(event.date)}</p>
                         <p>🕐 {event.time}</p>
                         <p>📍 {event.venue}</p>
                         <p>🏷️ {event.area}</p>
@@ -318,6 +328,7 @@ export default function AttendeeHub() {
         {activeTab === "myevents" && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">My Registered Events</h2>
+            <p className="text-gray-500 text-sm mb-4">Found {myEvents.length} registration(s)</p>
             {myEvents.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-12 text-center">
                 <svg
@@ -330,7 +341,7 @@ export default function AttendeeHub() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                   />
                 </svg>
                 <p className="text-gray-500 mb-4">You haven't registered for any events yet</p>
@@ -343,44 +354,50 @@ export default function AttendeeHub() {
               </div>
             ) : (
               <div className="space-y-4">
-                {myEvents.map((registration) => (
-                  <div key={registration._id} className="bg-white rounded-lg shadow hover:shadow-lg transition p-6">
-                    <div className="flex flex-col md:flex-row md:items-center gap-4">
-                      {registration.event.image && (
-                        <img
-                          src={registration.event.image || "/placeholder.svg"}
-                          alt={registration.event.title}
-                          className="w-full md:w-32 h-32 object-cover rounded-lg"
-                        />
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
-                            REGISTERED
-                          </span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
-                            {registration.event.eventType}
-                          </span>
+                {myEvents.map((registration) => {
+                  if (!registration.event) {
+                    console.log("[v0] Registration missing event data:", registration)
+                    return null
+                  }
+                  return (
+                    <div key={registration._id} className="bg-white rounded-lg shadow hover:shadow-lg transition p-6">
+                      <div className="flex flex-col md:flex-row md:items-center gap-4">
+                        {registration.event.image && (
+                          <img
+                            src={registration.event.image || "/placeholder.svg"}
+                            alt={registration.event.title}
+                            className="w-full md:w-32 h-32 object-cover rounded-lg"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
+                              REGISTERED
+                            </span>
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                              {registration.event.eventType}
+                            </span>
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900 mb-2">{registration.event.title}</h3>
+                          <div className="grid md:grid-cols-2 gap-2 text-sm text-gray-600">
+                            <p>📅 {formatDate(registration.event.date)}</p>
+                            <p>🕐 {registration.event.time}</p>
+                            <p>📍 {registration.event.venue}</p>
+                            <p>🏷️ {registration.event.area}</p>
+                          </div>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">{registration.event.title}</h3>
-                        <div className="grid md:grid-cols-2 gap-2 text-sm text-gray-600">
-                          <p>📅 {new Date(registration.event.date).toLocaleDateString()}</p>
-                          <p>🕐 {registration.event.time}</p>
-                          <p>📍 {registration.event.venue}</p>
-                          <p>🏷️ {registration.event.area}</p>
+                        <div className="flex flex-col gap-2">
+                          <Link
+                            to={`/events/${registration.event._id}`}
+                            className="text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition whitespace-nowrap"
+                          >
+                            View Event
+                          </Link>
                         </div>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Link
-                          to={`/events/${registration.event._id}`}
-                          className="text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition whitespace-nowrap"
-                        >
-                          View Event
-                        </Link>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

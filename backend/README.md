@@ -22,10 +22,10 @@ Express.js backend for Event Management System with MongoDB database.
 - dotenv: Environment variables
 
 ## Running the Server
-\`\`\`bash
+```bash
 npm install
 npm run dev
-\`\`\`
+```
 
 Server runs on port 5000 by default.
 

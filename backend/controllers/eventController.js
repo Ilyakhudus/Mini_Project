@@ -125,11 +125,13 @@ exports.getEventById = async (req, res, next) => {
       return res.status(404).json({ error: "Event not found" })
     }
 
-    const isOrganizer = event.organizer._id.toString() === req.user.id
+    const isOrganizer = req.user && event.organizer._id.toString() === req.user.id
     const isCollaborator =
+      req.user &&
       event.collaborators &&
       event.collaborators.some((c) => c.userId && c.userId._id && c.userId._id.toString() === req.user.id)
 
+    // Always hide PINs for non-organizers and non-collaborators (including unauthenticated users)
     if (!isOrganizer && !isCollaborator) {
       event.organizerPIN = undefined
       event.attendeePIN = undefined
@@ -235,7 +237,7 @@ exports.updateEvent = async (req, res, next) => {
     }
 
     event.updatedAt = Date.now()
-    await event.save()
+    await event.save({ validateModifiedOnly: true })
     await event.populate("organizer", "name email")
 
     console.log("[v0] Event updated successfully:", event)

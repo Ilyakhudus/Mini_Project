@@ -36,7 +36,7 @@ export default function EventDetail() {
 
   const handleRegister = async () => {
     if (!user) {
-      navigate("/login")
+      navigate(`/register-for-event/${id}`)
       return
     }
 
@@ -172,7 +172,7 @@ export default function EventDetail() {
                   </p>
                 )}
                 <p>
-                  <span className="font-medium">Price:</span> ${event.price}
+                  <span className="font-medium">Price:</span> ₹{event.price}
                 </p>
                 <p>
                   <span className="font-medium">Organizer:</span> {event.organizer?.name}

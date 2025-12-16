@@ -1,15 +1,20 @@
 "use client"
 
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../hooks/useAuth"
 
 export default function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleLogout = () => {
     logout()
     navigate("/")
+  }
+
+  if (location.pathname === "/" || location.pathname.startsWith("/register-for-event")) {
+    return null
   }
 
   return (

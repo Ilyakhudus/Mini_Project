@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { eventsAPI } from "../utils/api"
 import { useAuth } from "../hooks/useAuth"
+import { formatDate } from "../utils/dateUtils"
 
 export default function OrganizerHub() {
   const { user } = useAuth()
@@ -82,15 +83,17 @@ export default function OrganizerHub() {
               <h1 className="text-3xl font-bold text-gray-900">Organizer Hub</h1>
               <p className="mt-1 text-gray-600">Welcome back, {user?.name}. Manage your events here.</p>
             </div>
-            <Link
-              to="/create-event"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Create New Event
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/create-event"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create New Event
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -256,11 +259,7 @@ export default function OrganizerHub() {
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                       />
                     </svg>
-                    {new Date(event.date).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
+                    {formatDate(event.date)}
                     <span className="text-gray-300">|</span>
                     {event.time}
                   </div>

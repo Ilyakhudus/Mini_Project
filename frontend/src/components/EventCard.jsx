@@ -1,6 +1,7 @@
 "use client"
 
 import { Link } from "react-router-dom"
+import { formatDate } from "../utils/dateUtils"
 
 export default function EventCard({ event }) {
   const capacityPercentage = event.capacity ? (event.registeredCount / event.capacity) * 100 : 0
@@ -29,7 +30,7 @@ export default function EventCard({ event }) {
         <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">{event.title}</h3>
 
         <div className="space-y-2 text-sm text-gray-600 mb-4">
-          <p>📅 {new Date(event.date).toLocaleDateString()}</p>
+          <p>📅 {formatDate(event.date)}</p>
           <p>⏰ {event.time}</p>
           <p>📍 {event.venue}</p>
           {event.area && <p>🗺️ {event.area}</p>}

@@ -19,10 +19,14 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("token")
-      localStorage.removeItem("user")
-      window.location.href = "/login"
+    const isAuthRoute = error.config?.url?.includes("/auth/login") || error.config?.url?.includes("/auth/register")
+
+    if (error.response?.status === 401 && !isAuthRoute) {
+      const hadToken = localStorage.getItem("token")
+      if (hadToken) {
+        localStorage.removeItem("token")
+        localStorage.removeItem("user")
+      }
     }
     return Promise.reject(error)
   },
