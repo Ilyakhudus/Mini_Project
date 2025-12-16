@@ -13,22 +13,29 @@ export default function Events() {
   const [error, setError] = useState("")
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState("")
+  const [eventCode, setEventCode] = useState("")
+  const [eventType, setEventType] = useState("")
+  const [accessType, setAccessType] = useState("")
   const [pagination, setPagination] = useState(null)
   const { user } = useAuth()
 
   useEffect(() => {
     fetchEvents()
-  }, [page, search])
+  }, [page, search, eventCode, eventType, accessType])
 
   const fetchEvents = async () => {
     try {
       setLoading(true)
-      const response = await eventsAPI.getEvents(page, 9, search)
-      setEvents(response.data.events)
+      setError("")
+      console.log("[v0] Fetching events with params:", { page, search, eventCode, eventType, accessType })
+      const response = await eventsAPI.getEvents(page, 9, search, "", eventType, "", accessType, eventCode)
+      console.log("[v0] Events response:", response.data)
+      setEvents(response.data.events || [])
       setPagination(response.data.pagination)
     } catch (err) {
-      setError("Failed to load events")
-      console.error(err)
+      console.error("[v0] Failed to load events:", err)
+      setError(err.response?.data?.error || "Failed to load events. Please try again.")
+      setEvents([])
     } finally {
       setLoading(false)
     }
@@ -39,28 +46,76 @@ export default function Events() {
     setPage(1)
   }
 
+  const handleEventCodeSearch = (e) => {
+    setEventCode(e.target.value.toUpperCase())
+    setPage(1)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Browse Events</h1>
 
-          <div className="flex gap-4 mb-6">
-            <input
-              type="text"
-              placeholder="Search events..."
-              value={search}
-              onChange={handleSearch}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {user && (user.role === "organizer" || user.role === "admin") && (
-              <Link
-                to="/create-event"
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <input
+                type="text"
+                placeholder="Search events by name..."
+                value={search}
+                onChange={handleSearch}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                placeholder="Enter Event Code"
+                value={eventCode}
+                onChange={handleEventCodeSearch}
+                maxLength={6}
+                className="w-full sm:w-40 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
+              />
+              {user && (user.role === "organizer" || user.role === "admin") && (
+                <Link
+                  to="/create-event"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center"
+                >
+                  Create Event
+                </Link>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <select
+                value={eventType}
+                onChange={(e) => {
+                  setEventType(e.target.value)
+                  setPage(1)
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                Create Event
-              </Link>
-            )}
+                <option value="">All Event Types</option>
+                <option value="seminar">Seminar</option>
+                <option value="concert">Concert</option>
+                <option value="meet-up">Meet-up</option>
+                <option value="workshop">Workshop</option>
+                <option value="conference">Conference</option>
+                <option value="webinar">Webinar</option>
+                <option value="other">Other</option>
+              </select>
+
+              <select
+                value={accessType}
+                onChange={(e) => {
+                  setAccessType(e.target.value)
+                  setPage(1)
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Access Types</option>
+                <option value="open">Open Events</option>
+                <option value="invite-only">Invite Only</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -73,6 +128,7 @@ export default function Events() {
         ) : events.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500">No events found</p>
+            {eventCode && <p className="text-gray-400 mt-2">Try checking the event code or searching by name</p>}
           </div>
         ) : (
           <>

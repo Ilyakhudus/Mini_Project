@@ -10,6 +10,8 @@ import UserRegistrations from "./pages/UserRegistrations"
 import ProtectedRoute from "./components/ProtectedRoute"
 import Landing from "./pages/Landing"
 import AttendeeHub from "./pages/AttendeeHub"
+import OrganizerHub from "./pages/OrganizerHub"
+import EventManagement from "./pages/EventManagement"
 
 function App() {
   return (
@@ -25,6 +27,22 @@ function App() {
           element={
             <ProtectedRoute roles={["attendee"]}>
               <AttendeeHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/organizer"
+          element={
+            <ProtectedRoute roles={["organizer", "admin"]}>
+              <OrganizerHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/organizer/event/:id"
+          element={
+            <ProtectedRoute roles={["organizer", "admin"]}>
+              <EventManagement />
             </ProtectedRoute>
           }
         />

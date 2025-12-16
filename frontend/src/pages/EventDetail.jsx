@@ -13,6 +13,9 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [registering, setRegistering] = useState(false)
+  const [showPinModal, setShowPinModal] = useState(false)
+  const [pin, setPin] = useState("")
+  const [pinError, setPinError] = useState("")
 
   useEffect(() => {
     fetchEvent()
@@ -37,16 +40,42 @@ export default function EventDetail() {
       return
     }
 
+    if (event.accessType === "invite-only") {
+      setShowPinModal(true)
+      return
+    }
+
+    await submitRegistration()
+  }
+
+  const submitRegistration = async (pinValue = null) => {
     try {
       setRegistering(true)
-      await registrationsAPI.registerEvent(id)
+      setPinError("")
+      await registrationsAPI.registerEvent(id, pinValue)
       alert("Successfully registered for the event!")
+      setShowPinModal(false)
+      setPin("")
       fetchEvent()
     } catch (err) {
-      alert(err.response?.data?.error || "Failed to register")
+      const errorMsg = err.response?.data?.error || "Failed to register"
+      if (showPinModal) {
+        setPinError(errorMsg)
+      } else {
+        alert(errorMsg)
+      }
     } finally {
       setRegistering(false)
     }
+  }
+
+  const handlePinSubmit = (e) => {
+    e.preventDefault()
+    if (!pin.trim()) {
+      setPinError("Please enter the PIN")
+      return
+    }
+    submitRegistration(pin)
   }
 
   const handleEdit = () => {
@@ -73,6 +102,8 @@ export default function EventDetail() {
   }
 
   const capacityPercentage = (event.registeredCount / event.capacity) * 100
+  const isOrganizer = user && event.organizer && user.id === event.organizer._id
+  const isCollaborator = user && event.collaborators?.some((c) => c.userId?._id === user.id)
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
@@ -86,9 +117,41 @@ export default function EventDetail() {
         )}
 
         <div className="bg-white rounded-lg shadow-lg p-8">
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-mono rounded-full">
+              Code: {event.eventCode}
+            </span>
+            <span
+              className={`px-3 py-1 text-sm rounded-full ${
+                event.accessType === "invite-only" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"
+              }`}
+            >
+              {event.accessType === "invite-only" ? "Invite Only" : "Open Event"}
+            </span>
+            {event.eventType && (
+              <span className="px-3 py-1 bg-purple-100 text-purple-800 text-sm rounded-full capitalize">
+                {event.eventType}
+              </span>
+            )}
+          </div>
+
           <h1 className="text-4xl font-bold text-gray-900 mb-4">{event.title}</h1>
 
           {event.description && <p className="text-gray-600 mb-6">{event.description}</p>}
+
+          {event.detailedDescription && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">About This Event</h3>
+              <p className="text-gray-600 whitespace-pre-wrap">{event.detailedDescription}</p>
+            </div>
+          )}
+
+          {event.activitiesAndBenefits && (
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Activities & Benefits</h3>
+              <p className="text-gray-600 whitespace-pre-wrap">{event.activitiesAndBenefits}</p>
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-8 mb-8">
             <div>
@@ -103,11 +166,16 @@ export default function EventDetail() {
                 <p>
                   <span className="font-medium">Venue:</span> {event.venue}
                 </p>
+                {event.area && (
+                  <p>
+                    <span className="font-medium">Area:</span> {event.area}
+                  </p>
+                )}
                 <p>
                   <span className="font-medium">Price:</span> ${event.price}
                 </p>
                 <p>
-                  <span className="font-medium">Organizer:</span> {event.organizer.name}
+                  <span className="font-medium">Organizer:</span> {event.organizer?.name}
                 </p>
               </div>
             </div>
@@ -124,6 +192,20 @@ export default function EventDetail() {
                 ></div>
               </div>
               <p className="text-sm text-gray-600 mt-2">{Math.round(capacityPercentage)}% Capacity</p>
+
+              {(isOrganizer || isCollaborator) && (
+                <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Event PINs (Visible to organizers only)</p>
+                  <p className="text-sm">
+                    <span className="font-medium">Organizer PIN:</span>{" "}
+                    <span className="font-mono">{event.organizerPIN}</span>
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-medium">Attendee PIN:</span>{" "}
+                    <span className="font-mono">{event.attendeePIN}</span>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -145,7 +227,7 @@ export default function EventDetail() {
                   Delete Event
                 </button>
               </>
-            ) : user && user.role === "organizer" && user.id === event.organizer._id ? (
+            ) : isOrganizer ? (
               <>
                 <button
                   onClick={handleEdit}
@@ -170,12 +252,56 @@ export default function EventDetail() {
                   ? "Registering..."
                   : event.registeredCount >= event.capacity
                     ? "Event Full"
-                    : "Register Now"}
+                    : event.accessType === "invite-only"
+                      ? "Register with PIN"
+                      : "Register Now"}
               </button>
             )}
           </div>
         </div>
       </div>
+
+      {showPinModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Enter Attendee PIN</h2>
+            <p className="text-gray-600 mb-4">
+              This is an invite-only event. Please enter the attendee PIN provided by the organizer.
+            </p>
+            <form onSubmit={handlePinSubmit}>
+              <input
+                type="text"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder="Enter 4-digit PIN"
+                maxLength={4}
+                className="w-full px-4 py-3 text-center text-2xl font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              />
+              {pinError && <p className="text-red-600 text-sm mb-4">{pinError}</p>}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPinModal(false)
+                    setPin("")
+                    setPinError("")
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={registering}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                >
+                  {registering ? "Verifying..." : "Submit"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

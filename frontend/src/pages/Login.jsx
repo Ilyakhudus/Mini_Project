@@ -26,7 +26,7 @@ export default function Login() {
       login(response.data.user, response.data.token)
 
       if (response.data.user.role === "organizer" || response.data.user.role === "admin") {
-        navigate("/dashboard")
+        navigate("/organizer") // Updated redirect path
       } else {
         navigate("/attendee")
       }

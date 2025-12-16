@@ -31,11 +31,11 @@ export default function Navbar() {
                 )}
                 {user.role === "organizer" || user.role === "admin" ? (
                   <>
-                    <Link to="/dashboard" className="hover:text-blue-200">
-                      Dashboard
+                    <Link to="/organizer" className="hover:text-blue-200">
+                      Organizer Hub
                     </Link>
-                    <Link to="/budget-dashboard" className="hover:text-blue-200">
-                      Budget
+                    <Link to="/dashboard" className="hover:text-blue-200">
+                      Stats
                     </Link>
                   </>
                 ) : null}
