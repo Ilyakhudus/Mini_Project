@@ -2,77 +2,235 @@
 
 import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { eventsAPI, registrationsAPI } from "../utils/api"
+import { eventsAPI, registrationsAPI, messagesAPI } from "../utils/api"
 import { useAuth } from "../hooks/useAuth"
 import { formatDate } from "../utils/dateUtils"
 
 export default function AttendeeHub() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState("invites")
-  const [invites, setInvites] = useState([])
-  const [exploreEvents, setExploreEvents] = useState([])
+  const [activeTab, setActiveTab] = useState("explore")
+  const [events, setEvents] = useState([])
   const [myEvents, setMyEvents] = useState([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filters, setFilters] = useState({
-    eventType: "",
-    area: "",
-  })
+  const [error, setError] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("")
+  const [eventTypeFilter, setEventTypeFilter] = useState("")
+  const [accessTypeFilter, setAccessTypeFilter] = useState("")
+
+  const [inviteCode, setInviteCode] = useState("")
+  const [invitePin, setInvitePin] = useState("")
+  const [inviteError, setInviteError] = useState("")
+  const [inviteLoading, setInviteLoading] = useState(false)
+
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const [showEventModal, setShowEventModal] = useState(false)
+
+  // Updates tab states
+  const [systemUpdates, setSystemUpdates] = useState([])
+  const [updatesViewed, setUpdatesViewed] = useState(false)
+  const [organizerMessages, setOrganizerMessages] = useState([])
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0)
+
+  const [pinModalEvent, setPinModalEvent] = useState(null)
+  const [pinInput, setPinInput] = useState("")
+  const [pinError, setPinError] = useState("")
+  const [pinLoading, setPinLoading] = useState(false)
 
   useEffect(() => {
-    fetchData()
+    fetchInitialData()
   }, [])
 
-  useEffect(() => {
-    if (activeTab === "explore") {
-      fetchExploreEvents()
-    }
-  }, [activeTab, searchQuery, filters])
-
-  const fetchData = async () => {
+  const fetchInitialData = async () => {
     try {
       setLoading(true)
-      console.log("[v0] Fetching attendee data...")
+      console.log("[v0] Fetching initial data for AttendeeHub")
 
-      const invitesResponse = await registrationsAPI.getUserInvitations(1, 20)
-      console.log("[v0] Invitations response:", invitesResponse.data)
-      setInvites(invitesResponse.data.invitations || [])
+      // Fetch my registered events and organizer messages in parallel
+      const [myEventsResponse, messagesResponse] = await Promise.all([
+        registrationsAPI.getUserRegistrations(1, 20),
+        messagesAPI.getUserMessages(),
+      ])
 
-      // Fetch my registered events
-      console.log("[v0] Fetching registered events...")
-      const myEventsResponse = await registrationsAPI.getUserRegistrations(1, 20)
-      console.log("[v0] Registered events response:", myEventsResponse.data)
-      console.log("[v0] Full registrations array:", JSON.stringify(myEventsResponse.data.registrations, null, 2))
+      console.log("[v0] My registrations response:", myEventsResponse.data)
+      console.log("[v0] Messages response:", messagesResponse.data)
+
       setMyEvents(myEventsResponse.data.registrations || [])
+      generateSystemUpdates(myEventsResponse.data.registrations || [])
+
+      const messages = messagesResponse.data.messages || []
+      setOrganizerMessages(messages)
+      setUnreadMessageCount(messages.filter((m) => !m.read).length)
     } catch (err) {
-      console.error("[v0] Failed to fetch attendee data", err)
-      console.error("[v0] Error details:", err.response?.data)
+      console.error("[v0] Error fetching initial data:", err)
+      setError(err.response?.data?.error || "Failed to load data")
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchExploreEvents = async () => {
+  const generateSystemUpdates = (registrations) => {
+    const now = new Date()
+    const generatedUpdates = []
+
+    registrations.forEach((reg) => {
+      if (!reg.event) return
+
+      const eventDate = new Date(reg.event.date)
+      const daysUntil = Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24))
+
+      if (daysUntil <= 7 && daysUntil > 0) {
+        generatedUpdates.push({
+          id: `upcoming-${reg._id}`,
+          type: "upcoming",
+          title: `${reg.event.title} is coming up!`,
+          message: `Only ${daysUntil} day${daysUntil > 1 ? "s" : ""} left until the event.`,
+          event: reg.event,
+          date: now,
+        })
+      }
+
+      if (daysUntil === 0) {
+        generatedUpdates.push({
+          id: `today-${reg._id}`,
+          type: "today",
+          title: `${reg.event.title} is TODAY!`,
+          message: `Don't forget - your event starts at ${reg.event.time}.`,
+          event: reg.event,
+          date: now,
+        })
+      }
+    })
+
+    setSystemUpdates(generatedUpdates)
+  }
+
+  const handleMarkMessageRead = async (messageId) => {
     try {
-      console.log("[v0] Fetching explore events with filters:", filters, "search:", searchQuery)
-      const response = await eventsAPI.getEvents(1, 20, searchQuery, "", filters.eventType, filters.area, "")
-      console.log("[v0] Explore events response:", response.data)
-      setExploreEvents(response.data.events)
+      await messagesAPI.markAsRead(messageId)
+      setOrganizerMessages((prev) =>
+        prev.map((msg) => (msg._id === messageId ? { ...msg, read: true, readAt: new Date() } : msg)),
+      )
+      setUnreadMessageCount((prev) => Math.max(0, prev - 1))
     } catch (err) {
-      console.error("[v0] Failed to fetch explore events", err)
+      console.error("Failed to mark message as read", err)
     }
   }
 
-  const handleRegister = async (eventId) => {
+  const fetchExploreEvents = async () => {
     try {
-      await registrationsAPI.registerEvent(eventId)
+      const response = await eventsAPI.getEvents(
+        1,
+        20,
+        searchTerm,
+        categoryFilter,
+        eventTypeFilter,
+        accessTypeFilter,
+        "",
+      )
+      setEvents(response.data.events)
+    } catch (err) {
+      console.error("Failed to fetch explore events", err)
+    }
+  }
+
+  const handleRegister = async (event) => {
+    if (event.accessType === "invite-only") {
+      setPinModalEvent(event)
+      setPinInput("")
+      setPinError("")
+      setShowPinModal(true)
+      return
+    }
+
+    try {
+      await registrationsAPI.registerEvent(event._id)
       alert("Successfully registered for the event!")
-      fetchData()
+      fetchInitialData()
     } catch (err) {
       alert(err.response?.data?.error || "Registration failed")
     }
   }
+
+  const handlePinSubmit = async (e) => {
+    e.preventDefault()
+    setPinError("")
+
+    if (!pinInput.trim()) {
+      setPinError("Please enter the attendee PIN")
+      return
+    }
+
+    try {
+      setPinLoading(true)
+      await registrationsAPI.registerEvent(pinModalEvent._id, pinInput.trim())
+      alert("Successfully registered for the event!")
+      setShowPinModal(false)
+      setPinModalEvent(null)
+      setPinInput("")
+      fetchInitialData()
+    } catch (err) {
+      setPinError(err.response?.data?.error || "Registration failed. Please check your PIN.")
+    } finally {
+      setPinLoading(false)
+    }
+  }
+
+  const handleInviteCodeRegister = async (e) => {
+    e.preventDefault()
+    setInviteError("")
+
+    if (!inviteCode.trim()) {
+      setInviteError("Please enter an event code")
+      return
+    }
+    if (!invitePin.trim()) {
+      setInviteError("Please enter the attendee PIN")
+      return
+    }
+
+    try {
+      setInviteLoading(true)
+      const eventsResponse = await eventsAPI.getEvents(1, 1, "", "", "", "", "", inviteCode.trim().toUpperCase())
+
+      if (!eventsResponse.data.events || eventsResponse.data.events.length === 0) {
+        setInviteError("Event not found with this code")
+        return
+      }
+
+      const event = eventsResponse.data.events[0]
+      await registrationsAPI.registerEvent(event._id, invitePin.trim())
+      alert("Successfully registered for the event!")
+      setInviteCode("")
+      setInvitePin("")
+      fetchInitialData()
+      setActiveTab("myevents")
+    } catch (err) {
+      setInviteError(err.response?.data?.error || "Registration failed. Please check your code and PIN.")
+    } finally {
+      setInviteLoading(false)
+    }
+  }
+
+  const handleShowEventDetails = (event) => {
+    setSelectedEvent(event)
+    setShowEventModal(true)
+  }
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab)
+    if (tab === "updates") {
+      setUpdatesViewed(true)
+    }
+  }
+
+  const getTotalUnreadCount = () => {
+    const systemCount = !updatesViewed ? systemUpdates.length : 0
+    return systemCount + unreadMessageCount
+  }
+
+  const [showPinModal, setShowPinModal] = useState(false)
 
   if (loading) {
     return (
@@ -85,30 +243,36 @@ export default function AttendeeHub() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="mt-4 text-red-600">{error}</p>
+          <button
+            onClick={() => fetchInitialData()}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome back, {user?.name}!</h1>
-          <p className="text-gray-600">Discover events and manage your invitations</p>
+          <p className="text-gray-600">Discover events and manage your registrations</p>
         </div>
 
         {/* Tab Navigation */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="flex border-b">
             <button
-              onClick={() => setActiveTab("invites")}
-              className={`px-6 py-4 font-medium transition ${
-                activeTab === "invites"
-                  ? "text-blue-600 border-b-2 border-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Invites ({invites.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("explore")}
+              onClick={() => handleTabChange("explore")}
               className={`px-6 py-4 font-medium transition ${
                 activeTab === "explore"
                   ? "text-blue-600 border-b-2 border-blue-600"
@@ -118,90 +282,75 @@ export default function AttendeeHub() {
               Explore Events
             </button>
             <button
-              onClick={() => setActiveTab("myevents")}
+              onClick={() => handleTabChange("myevents")}
               className={`px-6 py-4 font-medium transition ${
                 activeTab === "myevents"
                   ? "text-blue-600 border-b-2 border-blue-600"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              My Events ({myEvents.length})
+              My Registrations ({myEvents.length})
+            </button>
+            <button
+              onClick={() => handleTabChange("updates")}
+              className={`px-6 py-4 font-medium transition ${
+                activeTab === "updates"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Updates{" "}
+              {getTotalUnreadCount() > 0 && (
+                <span className="ml-1 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {getTotalUnreadCount()}
+                </span>
+              )}
             </button>
           </div>
         </div>
-
-        {/* Invites Tab */}
-        {activeTab === "invites" && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">My Invitations</h2>
-            <p className="text-gray-600 mb-6">Events you've been invited to and registered for</p>
-            {invites.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-12 text-center">
-                <svg
-                  className="mx-auto h-12 w-12 text-gray-400 mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
-                <p className="text-gray-500">No invitations at the moment</p>
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {invites.map((invitation) => {
-                  const event = invitation.event
-                  return (
-                    <div key={invitation._id} className="bg-white rounded-lg shadow hover:shadow-lg transition">
-                      {event.image && (
-                        <img
-                          src={event.image || "/placeholder.svg"}
-                          alt={event.title}
-                          className="w-full h-48 object-cover rounded-t-lg"
-                        />
-                      )}
-                      <div className="p-6">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded">
-                            INVITED
-                          </span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
-                            {event.eventType}
-                          </span>
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h3>
-                        <p className="text-gray-600 text-sm mb-4 line-clamp-2">{event.description}</p>
-                        <div className="space-y-2 text-sm text-gray-600 mb-4">
-                          <p>📅 {formatDate(event.date)}</p>
-                          <p>🕐 {event.time}</p>
-                          <p>📍 {event.venue}</p>
-                          <p>🏷️ {event.area}</p>
-                        </div>
-                        <Link
-                          to={`/events/${event._id}`}
-                          className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition"
-                        >
-                          View Details
-                        </Link>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Explore Tab */}
         {activeTab === "explore" && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Explore Upcoming Events</h2>
             <p className="text-gray-600 mb-6">Discover both open and invite-only events</p>
+
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg shadow p-6 mb-6 border border-purple-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Have an Invite Code?</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Enter your event code and PIN to register for invite-only events directly.
+              </p>
+              <form onSubmit={handleInviteCodeRegister} className="flex flex-col md:flex-row gap-3">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="Event Code (e.g., ABC123)"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
+                    maxLength={10}
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="Attendee PIN (4 digits)"
+                    value={invitePin}
+                    onChange={(e) => setInvitePin(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    maxLength={4}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={inviteLoading}
+                  className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition disabled:opacity-50"
+                >
+                  {inviteLoading ? "Registering..." : "Register with Code"}
+                </button>
+              </form>
+              {inviteError && <p className="text-red-600 text-sm mt-2">{inviteError}</p>}
+            </div>
 
             {/* Search and Filters */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -210,15 +359,15 @@ export default function AttendeeHub() {
                   <input
                     type="text"
                     placeholder="Search events..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
                 <div>
                   <select
-                    value={filters.eventType}
-                    onChange={(e) => setFilters({ ...filters, eventType: e.target.value })}
+                    value={eventTypeFilter}
+                    onChange={(e) => setEventTypeFilter(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="">All Types</option>
@@ -232,13 +381,15 @@ export default function AttendeeHub() {
                   </select>
                 </div>
                 <div>
-                  <input
-                    type="text"
-                    placeholder="Filter by area..."
-                    value={filters.area}
-                    onChange={(e) => setFilters({ ...filters, area: e.target.value })}
+                  <select
+                    value={accessTypeFilter}
+                    onChange={(e) => setAccessTypeFilter(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  >
+                    <option value="">All Access Types</option>
+                    <option value="open">Open</option>
+                    <option value="invite-only">Invite Only</option>
+                  </select>
                 </div>
               </div>
               <button
@@ -250,7 +401,7 @@ export default function AttendeeHub() {
             </div>
 
             {/* Events Grid */}
-            {exploreEvents.length === 0 ? (
+            {events.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-12 text-center">
                 <svg
                   className="mx-auto h-12 w-12 text-gray-400 mb-4"
@@ -269,7 +420,7 @@ export default function AttendeeHub() {
               </div>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {exploreEvents.map((event) => (
+                {events.map((event) => (
                   <div key={event._id} className="bg-white rounded-lg shadow hover:shadow-lg transition">
                     {event.image && (
                       <img
@@ -296,11 +447,11 @@ export default function AttendeeHub() {
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h3>
                       <p className="text-gray-600 text-sm mb-4 line-clamp-2">{event.description}</p>
                       <div className="space-y-2 text-sm text-gray-600 mb-4">
-                        <p>📅 {formatDate(event.date)}</p>
-                        <p>🕐 {event.time}</p>
-                        <p>📍 {event.venue}</p>
-                        <p>🏷️ {event.area}</p>
-                        {event.price > 0 && <p>💰 ${event.price}</p>}
+                        <p>Date: {formatDate(event.date)}</p>
+                        <p>Time: {event.time}</p>
+                        <p>Venue: {event.venue}</p>
+                        <p>Area: {event.area}</p>
+                        {event.price > 0 && <p>Price: Rs.{event.price}</p>}
                       </div>
                       <div className="flex gap-2">
                         <Link
@@ -310,7 +461,7 @@ export default function AttendeeHub() {
                           Details
                         </Link>
                         <button
-                          onClick={() => handleRegister(event._id)}
+                          onClick={() => handleRegister(event)}
                           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition"
                         >
                           Register
@@ -328,7 +479,9 @@ export default function AttendeeHub() {
         {activeTab === "myevents" && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">My Registered Events</h2>
-            <p className="text-gray-500 text-sm mb-4">Found {myEvents.length} registration(s)</p>
+            <p className="text-gray-500 text-sm mb-4">
+              Found {myEvents.length} registration(s). Click on an event to see details.
+            </p>
             {myEvents.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-12 text-center">
                 <svg
@@ -346,7 +499,7 @@ export default function AttendeeHub() {
                 </svg>
                 <p className="text-gray-500 mb-4">You haven't registered for any events yet</p>
                 <button
-                  onClick={() => setActiveTab("explore")}
+                  onClick={() => handleTabChange("explore")}
                   className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
                 >
                   Explore Events
@@ -356,11 +509,14 @@ export default function AttendeeHub() {
               <div className="space-y-4">
                 {myEvents.map((registration) => {
                   if (!registration.event) {
-                    console.log("[v0] Registration missing event data:", registration)
                     return null
                   }
                   return (
-                    <div key={registration._id} className="bg-white rounded-lg shadow hover:shadow-lg transition p-6">
+                    <div
+                      key={registration._id}
+                      className="bg-white rounded-lg shadow hover:shadow-lg transition p-6 cursor-pointer"
+                      onClick={() => handleShowEventDetails(registration.event)}
+                    >
                       <div className="flex flex-col md:flex-row md:items-center gap-4">
                         {registration.event.image && (
                           <img
@@ -380,19 +536,14 @@ export default function AttendeeHub() {
                           </div>
                           <h3 className="text-xl font-bold text-gray-900 mb-2">{registration.event.title}</h3>
                           <div className="grid md:grid-cols-2 gap-2 text-sm text-gray-600">
-                            <p>📅 {formatDate(registration.event.date)}</p>
-                            <p>🕐 {registration.event.time}</p>
-                            <p>📍 {registration.event.venue}</p>
-                            <p>🏷️ {registration.event.area}</p>
+                            <p>Date: {formatDate(registration.event.date)}</p>
+                            <p>Time: {registration.event.time}</p>
+                            <p>Venue: {registration.event.venue}</p>
+                            <p>Area: {registration.event.area}</p>
                           </div>
                         </div>
                         <div className="flex flex-col gap-2">
-                          <Link
-                            to={`/events/${registration.event._id}`}
-                            className="text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition whitespace-nowrap"
-                          >
-                            View Event
-                          </Link>
+                          <span className="text-center text-sm text-blue-600 font-medium">Click for details</span>
                         </div>
                       </div>
                     </div>
@@ -402,7 +553,318 @@ export default function AttendeeHub() {
             )}
           </div>
         )}
+
+        {activeTab === "updates" && (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Updates</h2>
+            <p className="text-gray-600 mb-6">Stay informed about your upcoming events and messages from organizers</p>
+
+            {systemUpdates.length === 0 && organizerMessages.length === 0 ? (
+              <div className="bg-white rounded-lg shadow p-12 text-center">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                  />
+                </svg>
+                <p className="text-gray-500 mb-4">No updates at the moment</p>
+                <p className="text-gray-400 text-sm">Updates about your registered events will appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Organizer Messages Section */}
+                {organizerMessages.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Messages from Organizers</h3>
+                    <div className="space-y-4">
+                      {organizerMessages.map((message) => (
+                        <div
+                          key={message._id}
+                          className={`bg-white rounded-lg shadow p-6 border-l-4 border-purple-500 ${
+                            !message.read ? "ring-2 ring-purple-200" : ""
+                          }`}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="p-2 rounded-full bg-purple-100 text-purple-600">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                                />
+                              </svg>
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-semibold text-gray-900">{message.title}</h4>
+                                {!message.read && (
+                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                                    New
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-purple-600 mb-2">
+                                From: {message.event?.title || "Event"} - {message.sender?.name || "Organizer"}
+                              </p>
+                              <p className="text-gray-600">{message.content}</p>
+                              <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
+                                <span>{formatDate(message.createdAt)}</span>
+                                <div className="flex items-center gap-3">
+                                  {message.event && (
+                                    <button
+                                      onClick={() => handleShowEventDetails(message.event)}
+                                      className="text-blue-600 hover:underline"
+                                    >
+                                      View Event
+                                    </button>
+                                  )}
+                                  {!message.read && (
+                                    <button
+                                      onClick={() => handleMarkMessageRead(message._id)}
+                                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition"
+                                    >
+                                      Mark as Read
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* System Updates Section */}
+                {systemUpdates.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Event Reminders</h3>
+                    <div className="space-y-4">
+                      {systemUpdates.map((update) => (
+                        <div
+                          key={update.id}
+                          className={`bg-white rounded-lg shadow p-6 border-l-4 ${
+                            update.type === "today"
+                              ? "border-red-500"
+                              : update.type === "upcoming"
+                                ? "border-yellow-500"
+                                : "border-blue-500"
+                          }`}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div
+                              className={`p-2 rounded-full ${
+                                update.type === "today"
+                                  ? "bg-red-100 text-red-600"
+                                  : update.type === "upcoming"
+                                    ? "bg-yellow-100 text-yellow-600"
+                                    : "bg-blue-100 text-blue-600"
+                              }`}
+                            >
+                              {update.type === "today" ? (
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              ) : (
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-gray-900">{update.title}</h3>
+                              <p className="text-gray-600 text-sm mt-1">{update.message}</p>
+                              <div className="mt-3 flex items-center gap-4 text-sm text-gray-500">
+                                <span>Venue: {update.event.venue}</span>
+                                <span>Time: {update.event.time}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleShowEventDetails(update.event)}
+                              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Event Details Modal */}
+      {showEventModal && selectedEvent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {selectedEvent.image && (
+              <img
+                src={selectedEvent.image || "/placeholder.svg"}
+                alt={selectedEvent.title}
+                className="w-full h-48 object-cover rounded-t-lg"
+              />
+            )}
+            <div className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-mono rounded-full">
+                  Code: {selectedEvent.eventCode}
+                </span>
+                <span
+                  className={`px-3 py-1 text-sm rounded-full ${
+                    selectedEvent.accessType === "invite-only"
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-green-100 text-green-800"
+                  }`}
+                >
+                  {selectedEvent.accessType === "invite-only" ? "Invite Only" : "Open Event"}
+                </span>
+                {selectedEvent.eventType && (
+                  <span className="px-3 py-1 bg-purple-100 text-purple-800 text-sm rounded-full capitalize">
+                    {selectedEvent.eventType}
+                  </span>
+                )}
+              </div>
+
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">{selectedEvent.title}</h2>
+
+              {selectedEvent.description && <p className="text-gray-600 mb-4">{selectedEvent.description}</p>}
+
+              {selectedEvent.detailedDescription && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">About This Event</h3>
+                  <p className="text-gray-600 whitespace-pre-wrap">{selectedEvent.detailedDescription}</p>
+                </div>
+              )}
+
+              {selectedEvent.activitiesAndBenefits && (
+                <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Activities & Benefits</h3>
+                  <p className="text-gray-600 whitespace-pre-wrap">{selectedEvent.activitiesAndBenefits}</p>
+                </div>
+              )}
+
+              <div className="grid md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Event Details</h3>
+                  <div className="space-y-2 text-gray-600">
+                    <p>
+                      <span className="font-medium">Date:</span> {formatDate(selectedEvent.date)}
+                    </p>
+                    <p>
+                      <span className="font-medium">Time:</span> {selectedEvent.time}
+                    </p>
+                    <p>
+                      <span className="font-medium">Venue:</span> {selectedEvent.venue}
+                    </p>
+                    {selectedEvent.area && (
+                      <p>
+                        <span className="font-medium">Area:</span> {selectedEvent.area}
+                      </p>
+                    )}
+                    <p>
+                      <span className="font-medium">Price:</span> Rs.{selectedEvent.price}
+                    </p>
+                    <p>
+                      <span className="font-medium">Organizer:</span> {selectedEvent.organizer?.name}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Availability</h3>
+                  <p className="text-xl font-bold text-blue-600 mb-2">
+                    {selectedEvent.registeredCount}/{selectedEvent.capacity} Registered
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full"
+                      style={{
+                        width: `${Math.min((selectedEvent.registeredCount / selectedEvent.capacity) * 100, 100)}%`,
+                      }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    {Math.round((selectedEvent.registeredCount / selectedEvent.capacity) * 100)}% Capacity
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEventModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Close
+                </button>
+                <Link
+                  to={`/events/${selectedEvent._id}`}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center"
+                >
+                  View Full Page
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN Modal */}
+      {showPinModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Enter Attendee PIN</h2>
+            <form onSubmit={handlePinSubmit} className="space-y-4">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Attendee PIN (4 digits)"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  maxLength={4}
+                />
+                {pinError && <p className="text-red-600 text-sm mt-2">{pinError}</p>}
+              </div>
+              <button
+                type="submit"
+                disabled={pinLoading}
+                className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-50"
+              >
+                {pinLoading ? "Registering..." : "Register"}
+              </button>
+              <button
+                onClick={() => setShowPinModal(false)}
+                className="w-full px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

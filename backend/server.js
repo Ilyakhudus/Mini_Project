@@ -21,6 +21,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")))
 app.use("/api/auth", require("./routes/auth"))
 app.use("/api/events", require("./routes/events"))
 app.use("/api/registrations", require("./routes/registrations"))
+app.use("/api/activities", require("./routes/activities"))
+app.use("/api/notifications", require("./routes/notifications"))
+app.use("/api/feedback", require("./routes/feedback"))
+app.use("/api/messages", require("./routes/messages"))
 
 // Health check
 app.get("/api/health", (req, res) => {

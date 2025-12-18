@@ -15,18 +15,17 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Handle responses
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const isAuthRoute = error.config?.url?.includes("/auth/login") || error.config?.url?.includes("/auth/register")
+    // Only clear stored auth data for 401 errors on protected endpoints
+    // Don't redirect - let ProtectedRoute and components handle navigation
+    const isAuthEndpoint = error.config?.url?.includes("/auth/login") || error.config?.url?.includes("/auth/register")
 
-    if (error.response?.status === 401 && !isAuthRoute) {
-      const hadToken = localStorage.getItem("token")
-      if (hadToken) {
-        localStorage.removeItem("token")
-        localStorage.removeItem("user")
-      }
+    if (error.response?.status === 401 && !isAuthEndpoint) {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+      // Don't redirect here - let the AuthContext and ProtectedRoute handle it
     }
     return Promise.reject(error)
   },
@@ -57,6 +56,8 @@ export const eventsAPI = {
   getEventBudget: (eventId) => api.get(`/events/${eventId}/budget`),
   addExpense: (eventId, data) => api.post(`/events/${eventId}/budget/expense`, data),
   updateBudgetTotal: (eventId, data) => api.put(`/events/${eventId}/budget/total`, data),
+  updateBudgetSpent: (eventId, data) => api.put(`/events/${eventId}/budget/spent`, data),
+  updateBudgetIncome: (eventId, data) => api.put(`/events/${eventId}/budget/income`, data),
   getEventTasks: (eventId) => api.get(`/events/${eventId}/tasks`),
   addTask: (eventId, data) => api.post(`/events/${eventId}/tasks`, data),
   updateTaskStatus: (eventId, taskId, data) => api.put(`/events/${eventId}/tasks/${taskId}`, data),
@@ -67,6 +68,7 @@ export const eventsAPI = {
   getDashboard: (eventId) => api.get(`/events/${eventId}/dashboard`),
   addCollaborator: (eventId, userId) => api.post(`/events/${eventId}/collaborators`, { userId }),
   markAttendance: (eventId, userId) => api.post(`/events/${eventId}/attendance`, { userId }),
+  getEventRegistrations: (eventId) => api.get(`/events/${eventId}/registrations`),
 }
 
 export const registrationsAPI = {
@@ -75,6 +77,13 @@ export const registrationsAPI = {
   getUserRegistrations: (page = 1, limit = 10) => api.get("/registrations", { params: { page, limit } }),
   getUserInvitations: (page = 1, limit = 20) => api.get("/registrations/invitations", { params: { page, limit } }),
   getDashboardStats: () => api.get("/registrations/stats/dashboard"),
+}
+
+export const messagesAPI = {
+  getUserMessages: () => api.get("/messages"),
+  markAsRead: (messageId) => api.put(`/messages/${messageId}/read`),
+  sendMessage: (eventId, data) => api.post(`/messages/event/${eventId}`, data),
+  getEventMessages: (eventId) => api.get(`/messages/event/${eventId}`),
 }
 
 export default api

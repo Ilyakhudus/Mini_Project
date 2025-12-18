@@ -403,15 +403,32 @@ exports.updateTaskStatus = async (req, res, next) => {
       return res.status(403).json({ error: "Not authorized to update this task" })
     }
 
+    const wasNotCompleted = task.status !== "completed"
+    const isNowCompleted = status === "completed"
+
     if (status) task.status = status
     if (spent !== undefined) task.spent = spent
     if (status === "completed") task.completedAt = Date.now()
+
+    // If task is newly completed and has a budget, add to event's spent amount
+    if (wasNotCompleted && isNowCompleted && task.budget > 0) {
+      event.budget.spent = (event.budget.spent || 0) + task.budget
+      // Also add as an expense for tracking
+      event.budget.expenses.push({
+        description: `Task completed: ${task.title}`,
+        amount: task.budget,
+        category: "task",
+        taskId: task._id,
+        date: new Date(),
+      })
+    }
 
     await event.save()
 
     res.json({
       success: true,
       task,
+      budget: event.budget, // Return updated budget
     })
   } catch (error) {
     console.error("[v0] Error updating task status:", error)
@@ -592,6 +609,51 @@ exports.markAttendance = async (req, res, next) => {
       attendance,
     })
   } catch (error) {
+    next(error)
+  }
+}
+
+// New endpoint to get event registrations with user details
+exports.getEventRegistrations = async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.id)
+
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" })
+    }
+
+    const isOrganizer = event.organizer.toString() === req.user.id
+    const isCollaborator =
+      event.collaborators && event.collaborators.some((c) => c.userId && c.userId.toString() === req.user.id)
+
+    if (!isOrganizer && !isCollaborator && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Not authorized to view registrations" })
+    }
+
+    const registrations = await Registration.find({ event: event._id, status: "registered" })
+      .populate("user", "name email")
+      .sort({ registeredAt: -1 })
+
+    // Get attendance data
+    const attendanceRecords = await Attendance.find({ event: event._id })
+    const attendedUserIds = attendanceRecords.map((a) => a.user.toString())
+
+    // Add attendance status to each registration
+    const registrationsWithAttendance = registrations.map((reg) => ({
+      _id: reg._id,
+      user: reg.user,
+      registeredAt: reg.registeredAt,
+      hasAttended: attendedUserIds.includes(reg.user._id.toString()),
+    }))
+
+    res.json({
+      success: true,
+      registrations: registrationsWithAttendance,
+      total: registrations.length,
+      attendedCount: attendedUserIds.length,
+    })
+  } catch (error) {
+    console.error("[v0] Error in getEventRegistrations:", error)
     next(error)
   }
 }

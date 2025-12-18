@@ -1,42 +1,42 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams, useNavigate } from "react-router-dom"
-import { eventsAPI } from "../utils/api"
+import { useParams, useNavigate, Link } from "react-router-dom"
+import { eventsAPI, messagesAPI } from "../utils/api"
+import { useAuth } from "../hooks/useAuth"
+import { formatDate } from "../utils/dateUtils"
 
 export default function EventManagement() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState("dashboard")
+  const { user } = useAuth()
+
   const [event, setEvent] = useState(null)
-  const [dashboard, setDashboard] = useState({
-    tasks: { total: 0, completed: 0, pending: 0 },
-    collaborators: [],
-    budget: { projected: 0, spent: 0, remaining: 0 },
-    attendees: { registered: 0, attending: 0 },
-    feedback: { positive: 0, neutral: 0, negative: 0, total: 0 },
-  })
+  const [dashboard, setDashboard] = useState({})
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState("dashboard")
 
-  // Task form state
-  const [taskForm, setTaskForm] = useState({
-    title: "",
-    description: "",
-    budget: 0,
-    deadline: "",
-  })
-  const [taskError, setTaskError] = useState("")
-  const [taskSuccess, setTaskSuccess] = useState("")
+  // Task states
+  const [newTask, setNewTask] = useState({ title: "", description: "", deadline: "", budget: 0 })
+  const [taskLoading, setTaskLoading] = useState(false)
 
-  // Invite form state
-  const [inviteForm, setInviteForm] = useState({
-    recipientType: "attendee",
-    customMessage: "",
-  })
-  const [generatedInvite, setGeneratedInvite] = useState("")
-  const [inviteError, setInviteError] = useState("")
-  const [inviteSuccess, setInviteSuccess] = useState("")
+  // Budget states
+  const [newExpense, setNewExpense] = useState({ description: "", amount: "", category: "" })
+  const [budgetTotal, setBudgetTotal] = useState("")
+  const [budgetSpent, setBudgetSpent] = useState("")
+  const [budgetIncome, setBudgetIncome] = useState("")
+
+  // Registrations states
+  const [registrations, setRegistrations] = useState([])
+  const [registrationsLoading, setRegistrationsLoading] = useState(false)
+
+  // Messaging states
+  const [messageTitle, setMessageTitle] = useState("")
+  const [messageContent, setMessageContent] = useState("")
+  const [messageSending, setMessageSending] = useState(false)
+  const [sentMessages, setSentMessages] = useState([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
 
   const [settingsForm, setSettingsForm] = useState({
     accessType: "open",
@@ -63,72 +63,154 @@ export default function EventManagement() {
     }
   }, [event])
 
+  useEffect(() => {
+    if (activeTab === "registrations") {
+      fetchRegistrations()
+      fetchSentMessages()
+    }
+  }, [activeTab, id])
+
   const fetchEventData = async () => {
     try {
       setLoading(true)
-      const [eventRes, dashboardRes] = await Promise.all([
-        eventsAPI.getEventById(id),
-        eventsAPI.getDashboard(id).catch(() => ({ data: { dashboard: null } })),
-      ])
+      const [eventRes, dashboardRes] = await Promise.all([eventsAPI.getEventById(id), eventsAPI.getDashboard(id)])
 
       setEvent(eventRes.data.event)
-      if (dashboardRes.data.dashboard) {
-        setDashboard(dashboardRes.data.dashboard)
-      }
+      setDashboard(dashboardRes.data.dashboard)
+      setBudgetTotal(eventRes.data.event.budget?.total || 0)
+      setBudgetSpent(eventRes.data.event.budget?.spent || 0)
+      setBudgetIncome(eventRes.data.event.budget?.income || 0)
     } catch (err) {
-      setError("Failed to load event data")
+      setError(err.response?.data?.error || "Failed to load event")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCreateTask = async (e) => {
-    e.preventDefault()
-    setTaskError("")
-    setTaskSuccess("")
+  const fetchRegistrations = async () => {
+    try {
+      setRegistrationsLoading(true)
+      console.log("[v0] Fetching registrations for event:", id)
+      const response = await eventsAPI.getEventRegistrations(id)
+      console.log("[v0] Registrations response:", response.data)
+      setRegistrations(response.data.registrations || [])
+    } catch (err) {
+      console.error("[v0] Failed to fetch registrations", err)
+    } finally {
+      setRegistrationsLoading(false)
+    }
+  }
 
-    if (!taskForm.title) {
-      setTaskError("Task title is required")
+  const fetchSentMessages = async () => {
+    try {
+      console.log("[v0] Fetching sent messages for event:", id)
+      const response = await messagesAPI.getEventMessages(id)
+      console.log("[v0] Sent messages response:", response.data)
+      setSentMessages(response.data.messages || [])
+    } catch (err) {
+      console.error("[v0] Failed to fetch sent messages", err)
+    }
+  }
+
+  const handleMarkAttendance = async (userId) => {
+    try {
+      await eventsAPI.markAttendance(id, userId)
+      fetchRegistrations()
+      fetchEventData()
+    } catch (err) {
+      console.error("Failed to mark attendance", err)
+    }
+  }
+
+  const handleAddTask = async (e) => {
+    e.preventDefault()
+    try {
+      setTaskLoading(true)
+      await eventsAPI.addTask(id, newTask)
+      setNewTask({ title: "", description: "", deadline: "", budget: 0 })
+      fetchEventData()
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to add task")
+    } finally {
+      setTaskLoading(false)
+    }
+  }
+
+  const handleUpdateTaskStatus = async (taskId, status) => {
+    try {
+      await eventsAPI.updateTaskStatus(id, taskId, { status })
+      fetchEventData()
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update task")
+    }
+  }
+
+  const handleAddExpense = async (e) => {
+    e.preventDefault()
+    try {
+      await eventsAPI.addExpense(id, newExpense)
+      setNewExpense({ description: "", amount: "", category: "" })
+      fetchEventData()
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to add expense")
+    }
+  }
+
+  const handleUpdateBudgetTotal = async (e) => {
+    e.preventDefault()
+    try {
+      await eventsAPI.updateBudgetTotal(id, { total: Number(budgetTotal) })
+      fetchEventData()
+      alert("Budget updated successfully")
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update budget")
+    }
+  }
+
+  const handleUpdateBudgetSpent = async (e) => {
+    e.preventDefault()
+    try {
+      await eventsAPI.updateBudgetSpent(id, { spent: Number(budgetSpent) })
+      fetchEventData()
+      alert("Spent amount updated successfully")
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update spent amount")
+    }
+  }
+
+  const handleUpdateBudgetIncome = async (e) => {
+    e.preventDefault()
+    try {
+      await eventsAPI.updateBudgetIncome(id, { income: Number(budgetIncome) })
+      fetchEventData()
+      alert("Income updated successfully")
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update income")
+    }
+  }
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+    if (!messageTitle.trim() || !messageContent.trim()) {
+      alert("Please enter both title and message content")
       return
     }
 
     try {
-      await eventsAPI.addTask(id, taskForm)
-      setTaskSuccess("Task created successfully!")
-      setTaskForm({ title: "", description: "", budget: 0, deadline: "" })
-      fetchEventData()
+      setMessageSending(true)
+      const response = await messagesAPI.sendMessage(id, {
+        title: messageTitle,
+        content: messageContent,
+      })
+      alert(`Message sent to ${response.data.recipientCount} attendee(s)`)
+      setMessageTitle("")
+      setMessageContent("")
+      fetchSentMessages()
     } catch (err) {
-      setTaskError(err.response?.data?.error || "Failed to create task")
+      alert(err.response?.data?.error || "Failed to send message")
+    } finally {
+      setMessageSending(false)
     }
-  }
-
-  const handleUpdateTaskStatus = async (taskId, newStatus) => {
-    try {
-      await eventsAPI.updateTaskStatus(id, taskId, { status: newStatus })
-      fetchEventData()
-    } catch (err) {
-      setTaskError(err.response?.data?.error || "Failed to update task status")
-    }
-  }
-
-  const handleGenerateInvite = async (e) => {
-    e.preventDefault()
-    setInviteError("")
-    setInviteSuccess("")
-    setGeneratedInvite("")
-
-    try {
-      const response = await eventsAPI.generateInvite(id, inviteForm.recipientType, inviteForm.customMessage)
-      setGeneratedInvite(response.data.inviteMessage)
-      setInviteSuccess("Invite generated successfully!")
-    } catch (err) {
-      setInviteError(err.response?.data?.error || "Failed to generate invite. Please try again.")
-    }
-  }
-
-  const copyInvite = () => {
-    navigator.clipboard.writeText(generatedInvite)
-    setInviteSuccess("Invite copied to clipboard!")
   }
 
   const handleUpdateSettings = async (e) => {
@@ -159,57 +241,50 @@ export default function EventManagement() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
-  if (error || !event) {
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error || "Event not found"}</p>
-          <button onClick={() => navigate("/organizer")} className="px-4 py-2 bg-blue-600 text-white rounded-lg">
-            Back to Hub
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-red-50 text-red-600 p-6 rounded-lg">
+          {error}
+          <button onClick={() => navigate("/organizer")} className="ml-4 underline">
+            Go Back
           </button>
         </div>
       </div>
     )
   }
 
-  const tabs = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "tasks", label: "Tasks" },
-    { id: "budget", label: "Budget" },
-    { id: "collaborators", label: "Collaborators" },
-    { id: "registrations", label: "Registrations" },
-    { id: "invites", label: "Invites" },
-    { id: "settings", label: "Settings" },
-  ]
+  const remainingBudget = (event.budget?.income || 0) - (event.budget?.spent || 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <button onClick={() => navigate("/organizer")} className="text-blue-600 hover:underline mb-2 text-sm">
-                &larr; Back to Organizer Hub
-              </button>
+              <Link to="/organizer" className="text-blue-600 hover:underline text-sm mb-2 inline-block">
+                ← Back to Organizer Hub
+              </Link>
               <h1 className="text-2xl font-bold text-gray-900">{event.title}</h1>
-              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                <span>Code: {event.eventCode || "N/A"}</span>
-                <span>|</span>
-                <span>{new Date(event.date).toLocaleDateString()}</span>
-                <span>|</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-xs ${event.accessType === "invite-only" ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"}`}
-                >
-                  {event.accessType === "invite-only" ? "Invite Only" : "Open"}
-                </span>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-mono rounded">{event.eventCode}</span>
+                <span className="text-gray-500">{formatDate(event.date)}</span>
               </div>
+            </div>
+            <div className="flex gap-3">
+              <Link
+                to={`/events/${id}`}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                View Public Page
+              </Link>
             </div>
           </div>
         </div>
@@ -217,68 +292,105 @@ export default function EventManagement() {
 
       {/* Tabs */}
       <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4">
-          <nav className="flex gap-4 overflow-x-auto">
-            {tabs.map((tab) => (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex gap-1 overflow-x-auto">
+            {["dashboard", "tasks", "budget", "registrations", "settings"].map((tab) => (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-3 font-medium capitalize whitespace-nowrap ${
+                  activeTab === tab ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                {tab.label}
+                {tab}
               </button>
             ))}
-          </nav>
+          </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Dashboard Tab */}
         {activeTab === "dashboard" && (
           <div className="space-y-6">
             {/* Stats Grid */}
-            <div className="grid md:grid-cols-4 gap-4">
+            <div className="grid md:grid-cols-4 gap-6">
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Total Tasks</h3>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{dashboard.tasks?.total || 0}</p>
-                <p className="text-sm text-green-600 mt-1">{dashboard.tasks?.completed || 0} completed</p>
+                <p className="text-sm text-gray-500">Registered</p>
+                <p className="text-3xl font-bold text-blue-600">{dashboard.attendees?.registered || 0}</p>
+                <p className="text-sm text-gray-400">of {event.capacity} capacity</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Registrations</h3>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{dashboard.attendees?.registered || 0}</p>
-                <p className="text-sm text-gray-500 mt-1">of {event.capacity} capacity</p>
+                <p className="text-sm text-gray-500">Attended</p>
+                <p className="text-3xl font-bold text-green-600">{dashboard.attendees?.attending || 0}</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Budget</h3>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
-                  ₹{event.budget?.total || dashboard.budget?.projected || 0}
+                <p className="text-sm text-gray-500">Tasks Completed</p>
+                <p className="text-3xl font-bold text-purple-600">
+                  {event.tasks?.filter((t) => t.status === "completed").length || 0}/{event.tasks?.length || 0}
                 </p>
-                <p className="text-sm text-red-600 mt-1">₹{dashboard.budget?.spent || 0} spent</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Collaborators</h3>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{event.collaborators?.length || 0}</p>
+                <p className="text-sm text-gray-500">Budget Remaining</p>
+                <p className={`text-3xl font-bold ${remainingBudget >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  ₹{remainingBudget.toLocaleString()}
+                </p>
               </div>
             </div>
 
-            {/* PINs Display */}
+            {/* Attendance Progress */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Access Credentials</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm text-blue-600 font-medium">Organizer PIN</p>
-                  <p className="text-2xl font-mono font-bold text-blue-900">{event.organizerPIN || "N/A"}</p>
-                  <p className="text-xs text-blue-600 mt-1">Share with collaborators</p>
+              <h3 className="text-lg font-semibold mb-4">Attendance Overview</h3>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">Registration Progress</span>
+                    <span className="text-sm font-medium">
+                      {Math.round(((dashboard.attendees?.registered || 0) / event.capacity) * 100)}% filled
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-blue-600 h-3 rounded-full"
+                      style={{
+                        width: `${Math.min(((dashboard.attendees?.registered || 0) / event.capacity) * 100, 100)}%`,
+                      }}
+                    ></div>
+                  </div>
                 </div>
-                <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-sm text-green-600 font-medium">Attendee PIN</p>
-                  <p className="text-2xl font-mono font-bold text-green-900">{event.attendeePIN || "N/A"}</p>
-                  <p className="text-xs text-green-600 mt-1">Share with attendees</p>
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">Attendance Rate</span>
+                    <span className="text-sm font-medium">
+                      {dashboard.attendees?.registered > 0
+                        ? Math.round(((dashboard.attendees?.attending || 0) / dashboard.attendees?.registered) * 100)
+                        : 0}
+                      % attended
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-green-600 h-3 rounded-full"
+                      style={{
+                        width: `${dashboard.attendees?.registered > 0 ? Math.min(((dashboard.attendees?.attending || 0) / dashboard.attendees?.registered) * 100, 100) : 0}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PIN Info */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Access PINs</h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-600 mb-1">Organizer PIN</p>
+                  <p className="text-2xl font-mono font-bold text-blue-900">{event.organizerPIN}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-600 mb-1">Attendee PIN</p>
+                  <p className="text-2xl font-mono font-bold text-green-900">{event.attendeePIN}</p>
                 </div>
               </div>
             </div>
@@ -288,57 +400,53 @@ export default function EventManagement() {
         {/* Tasks Tab */}
         {activeTab === "tasks" && (
           <div className="space-y-6">
-            {/* Create Task Form */}
+            {/* Add Task Form */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Create New Task</h3>
-              {taskError && <div className="bg-red-50 text-red-600 p-3 rounded mb-4">{taskError}</div>}
-              {taskSuccess && <div className="bg-green-50 text-green-600 p-3 rounded mb-4">{taskSuccess}</div>}
-              <form onSubmit={handleCreateTask} className="space-y-4">
+              <h3 className="text-lg font-semibold mb-4">Add New Task</h3>
+              <form onSubmit={handleAddTask} className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Task Title *</label>
-                    <input
-                      type="text"
-                      value={taskForm.title}
-                      onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter task title"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Budget (₹)</label>
+                  <input
+                    type="text"
+                    placeholder="Task title"
+                    value={newTask.title}
+                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    required
+                  />
+                  <input
+                    type="date"
+                    value={newTask.deadline}
+                    onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
+                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <textarea
+                  placeholder="Task description"
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  rows={2}
+                />
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm text-gray-600 mb-1 block">Task Budget (₹)</label>
                     <input
                       type="number"
-                      value={taskForm.budget}
-                      onChange={(e) => setTaskForm({ ...taskForm, budget: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                      value={newTask.budget}
+                      onChange={(e) => setNewTask({ ...newTask, budget: Number(e.target.value) })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                       min="0"
                     />
                   </div>
+                  <button
+                    type="submit"
+                    disabled={taskLoading}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 mt-6"
+                  >
+                    {taskLoading ? "Adding..." : "Add Task"}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                  <textarea
-                    value={taskForm.description}
-                    onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    rows={2}
-                    placeholder="Task description"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-                  <input
-                    type="date"
-                    value={taskForm.deadline}
-                    onChange={(e) => setTaskForm({ ...taskForm, deadline: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                  Create Task
-                </button>
               </form>
             </div>
 
@@ -348,31 +456,38 @@ export default function EventManagement() {
               {event.tasks && event.tasks.length > 0 ? (
                 <div className="space-y-3">
                   {event.tasks.map((task) => (
-                    <div key={task._id} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium">{task.title}</h4>
-                          {task.description && <p className="text-sm text-gray-600 mt-1">{task.description}</p>}
-                          <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                            {task.budget > 0 && <span>Budget: ₹{task.budget}</span>}
-                            {task.deadline && <span>Due: {new Date(task.deadline).toLocaleDateString()}</span>}
-                          </div>
+                    <div key={task._id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex-1">
+                        <h4 className="font-medium">{task.title}</h4>
+                        {task.description && <p className="text-sm text-gray-500">{task.description}</p>}
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                          {task.deadline && <span>Due: {formatDate(task.deadline)}</span>}
+                          {task.budget > 0 && <span>Budget: ₹{task.budget}</span>}
                         </div>
-                        <select
-                          value={task.status}
-                          onChange={(e) => handleUpdateTaskStatus(task._id, e.target.value)}
-                          className={`px-3 py-1 rounded text-sm ${
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full ${
                             task.status === "completed"
-                              ? "bg-green-100 text-green-800"
+                              ? "bg-green-100 text-green-700"
                               : task.status === "in-progress"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-gray-100 text-gray-800"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-gray-100 text-gray-700"
                           }`}
                         >
-                          <option value="pending">Pending</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="completed">Completed</option>
-                        </select>
+                          {task.status}
+                        </span>
+                        {task.status !== "completed" && (
+                          <select
+                            value={task.status}
+                            onChange={(e) => handleUpdateTaskStatus(task._id, e.target.value)}
+                            className="text-sm border rounded px-2 py-1"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                          </select>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -387,170 +502,351 @@ export default function EventManagement() {
         {/* Budget Tab */}
         {activeTab === "budget" && (
           <div className="space-y-6">
-            <div className="grid md:grid-cols-3 gap-4">
+            {/* Budget Overview */}
+            <div className="grid md:grid-cols-4 gap-6">
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Total Budget</h3>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
-                  ₹{event.budget?.total || dashboard.budget?.projected || 0}
-                </p>
+                <p className="text-sm text-gray-500">Assigned Budget</p>
+                <p className="text-2xl font-bold text-blue-600">₹{(event.budget?.total || 0).toLocaleString()}</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Spent</h3>
-                <p className="text-3xl font-bold text-red-600 mt-2">₹{dashboard.budget?.spent || 0}</p>
+                <p className="text-sm text-gray-500">Income</p>
+                <p className="text-2xl font-bold text-green-600">₹{(event.budget?.income || 0).toLocaleString()}</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-500">Remaining</h3>
-                <p className="text-3xl font-bold text-green-600 mt-2">
-                  ₹{(event.budget?.total || dashboard.budget?.projected || 0) - (dashboard.budget?.spent || 0)}
+                <p className="text-sm text-gray-500">Spent</p>
+                <p className="text-2xl font-bold text-red-600">₹{(event.budget?.spent || 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-white rounded-lg shadow p-6">
+                <p className="text-sm text-gray-500">Remaining (Income - Spent)</p>
+                <p className={`text-2xl font-bold ${remainingBudget >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  ₹{remainingBudget.toLocaleString()}
                 </p>
               </div>
             </div>
 
-            {/* Task Budget Breakdown */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Budget by Task</h3>
-              {event.tasks && event.tasks.length > 0 ? (
-                <div className="space-y-3">
-                  {event.tasks
-                    .filter((t) => t.budget > 0)
-                    .map((task) => (
-                      <div key={task._id} className="flex items-center justify-between border-b pb-3">
-                        <div>
-                          <p className="font-medium">{task.title}</p>
-                          <p className="text-sm text-gray-500">{task.status}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">₹{task.budget}</p>
-                          <p className="text-sm text-gray-500">Spent: ₹{task.spent || 0}</p>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-4">No budget items</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Collaborators Tab */}
-        {activeTab === "collaborators" && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Collaborators ({event.collaborators?.length || 0})</h3>
-            {event.collaborators && event.collaborators.length > 0 ? (
-              <div className="space-y-3">
-                {event.collaborators.map((collab, index) => (
-                  <div key={index} className="flex items-center justify-between border-b pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-blue-600 font-medium">{collab.userId?.name?.charAt(0) || "U"}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium">{collab.userId?.name || "Unknown"}</p>
-                        <p className="text-sm text-gray-500">{collab.userId?.email || ""}</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-500">Added {new Date(collab.addedAt).toLocaleDateString()}</span>
+            {/* Budget Management Forms */}
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* Update Assigned Budget */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Update Assigned Budget</h3>
+                <form onSubmit={handleUpdateBudgetTotal} className="space-y-4">
+                  <div>
+                    <label className="text-sm text-gray-600 mb-1 block">Assigned Budget (₹)</label>
+                    <input
+                      type="number"
+                      value={budgetTotal}
+                      onChange={(e) => setBudgetTotal(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      min="0"
+                    />
                   </div>
-                ))}
+                  <button
+                    type="submit"
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Update Budget
+                  </button>
+                </form>
               </div>
-            ) : (
-              <p className="text-gray-500 text-center py-8">No collaborators added yet</p>
+
+              {/* Update Income */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Update Income</h3>
+                <form onSubmit={handleUpdateBudgetIncome} className="space-y-4">
+                  <div>
+                    <label className="text-sm text-gray-600 mb-1 block">Total Income (₹)</label>
+                    <input
+                      type="number"
+                      value={budgetIncome}
+                      onChange={(e) => setBudgetIncome(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      min="0"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Update Income
+                  </button>
+                </form>
+              </div>
+
+              {/* Update Spent */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Update Spent Amount</h3>
+                <form onSubmit={handleUpdateBudgetSpent} className="space-y-4">
+                  <div>
+                    <label className="text-sm text-gray-600 mb-1 block">Total Spent (₹)</label>
+                    <input
+                      type="number"
+                      value={budgetSpent}
+                      onChange={(e) => setBudgetSpent(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      min="0"
+                    />
+                  </div>
+                  <button type="submit" className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                    Update Spent
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Add Expense */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Add Individual Expense</h3>
+              <form onSubmit={handleAddExpense} className="grid md:grid-cols-4 gap-4">
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={newExpense.description}
+                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  required
+                />
+                <input
+                  type="number"
+                  placeholder="Amount (₹)"
+                  value={newExpense.amount}
+                  onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  required
+                />
+                <select
+                  value={newExpense.category}
+                  onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="">Select Category</option>
+                  <option value="venue">Venue</option>
+                  <option value="catering">Catering</option>
+                  <option value="equipment">Equipment</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="other">Other</option>
+                </select>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Add Expense
+                </button>
+              </form>
+            </div>
+
+            {/* Expense History */}
+            {event.budget?.expenses && event.budget.expenses.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Expense History</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 px-4">Description</th>
+                        <th className="text-left py-2 px-4">Category</th>
+                        <th className="text-left py-2 px-4">Amount</th>
+                        <th className="text-left py-2 px-4">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {event.budget.expenses.map((expense, index) => (
+                        <tr key={index} className="border-b">
+                          <td className="py-2 px-4">{expense.description}</td>
+                          <td className="py-2 px-4 capitalize">{expense.category || "-"}</td>
+                          <td className="py-2 px-4">₹{expense.amount}</td>
+                          <td className="py-2 px-4">{formatDate(expense.date)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
         )}
 
         {/* Registrations Tab */}
         {activeTab === "registrations" && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Registrations</h3>
-            <div className="grid md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-sm text-blue-600">Registered</p>
-                <p className="text-2xl font-bold text-blue-900">{dashboard.attendees?.registered || 0}</p>
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Registration Overview</h3>
+              <div className="grid md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <p className="text-sm text-blue-600">Registered</p>
+                  <p className="text-2xl font-bold text-blue-900">{dashboard.attendees?.registered || 0}</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-4">
+                  <p className="text-sm text-green-600">Attended</p>
+                  <p className="text-2xl font-bold text-green-900">{dashboard.attendees?.attending || 0}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600">Capacity</p>
+                  <p className="text-2xl font-bold text-gray-900">{event.capacity}</p>
+                </div>
               </div>
-              <div className="bg-green-50 rounded-lg p-4">
-                <p className="text-sm text-green-600">Capacity</p>
-                <p className="text-2xl font-bold text-green-900">{event.capacity}</p>
+
+              {/* Attendance Bar */}
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">Registration Progress</span>
+                    <span className="text-sm font-medium">
+                      {Math.round(((dashboard.attendees?.registered || 0) / event.capacity) * 100)}% filled
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-blue-600 h-3 rounded-full"
+                      style={{
+                        width: `${Math.min(((dashboard.attendees?.registered || 0) / event.capacity) * 100, 100)}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">Attendance Rate</span>
+                    <span className="text-sm font-medium">
+                      {dashboard.attendees?.registered > 0
+                        ? Math.round(((dashboard.attendees?.attending || 0) / dashboard.attendees?.registered) * 100)
+                        : 0}
+                      % attended
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-green-600 h-3 rounded-full"
+                      style={{
+                        width: `${dashboard.attendees?.registered > 0 ? Math.min(((dashboard.attendees?.attending || 0) / dashboard.attendees?.registered) * 100, 100) : 0}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-4">
-              <div
-                className="bg-blue-600 h-4 rounded-full"
-                style={{ width: `${Math.min(((dashboard.attendees?.registered || 0) / event.capacity) * 100, 100)}%` }}
-              ></div>
-            </div>
-            <p className="text-sm text-gray-500 mt-2 text-center">
-              {Math.round(((dashboard.attendees?.registered || 0) / event.capacity) * 100)}% capacity filled
-            </p>
-          </div>
-        )}
 
-        {/* Invites Tab */}
-        {activeTab === "invites" && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Generate Invite</h3>
-            <p className="text-gray-600 mb-6">
-              Generate an invite message that automatically includes the event code and PIN for easy sharing.
-            </p>
-
-            {inviteError && <div className="bg-red-50 text-red-600 p-3 rounded mb-4">{inviteError}</div>}
-            {inviteSuccess && <div className="bg-green-50 text-green-600 p-3 rounded mb-4">{inviteSuccess}</div>}
-
-            <form onSubmit={handleGenerateInvite} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Type</label>
-                <select
-                  value={inviteForm.recipientType}
-                  onChange={(e) => setInviteForm({ ...inviteForm, recipientType: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="attendee">Attendee (will receive Attendee PIN)</option>
-                  <option value="collaborator">Collaborator (will receive Organizer PIN)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Custom Message (optional)</label>
-                <textarea
-                  value={inviteForm.customMessage}
-                  onChange={(e) => setInviteForm({ ...inviteForm, customMessage: e.target.value })}
-                  placeholder={`You're invited to ${event.title}!`}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                />
-              </div>
-
-              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Generate Invite
-              </button>
-            </form>
-
-            {generatedInvite && (
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Generated Invite Message</label>
-                <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap border">
-                  {generatedInvite}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Send Message to Attendees</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Send updates or announcements to all registered attendees. Messages will appear in their Updates tab.
+              </p>
+              <form onSubmit={handleSendMessage} className="space-y-4">
+                <div>
+                  <label className="text-sm text-gray-600 mb-1 block">Message Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Important Update About the Event"
+                    value={messageTitle}
+                    onChange={(e) => setMessageTitle(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 mb-1 block">Message Content</label>
+                  <textarea
+                    placeholder="Write your message here..."
+                    value={messageContent}
+                    onChange={(e) => setMessageContent(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    rows={4}
+                    required
+                  />
                 </div>
                 <button
-                  onClick={copyInvite}
-                  className="mt-3 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                  type="submit"
+                  disabled={messageSending || registrations.length === 0}
+                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                    />
-                  </svg>
-                  Copy to Clipboard
+                  {messageSending ? "Sending..." : `Send to ${registrations.length} Attendee(s)`}
                 </button>
-              </div>
-            )}
+              </form>
+
+              {/* Sent Messages History */}
+              {sentMessages.length > 0 && (
+                <div className="mt-6 border-t pt-6">
+                  <h4 className="font-medium mb-3">Sent Messages</h4>
+                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                    {sentMessages.map((msg) => (
+                      <div key={msg._id} className="p-3 bg-gray-50 rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <h5 className="font-medium text-gray-900">{msg.title}</h5>
+                          <span className="text-xs text-gray-500">{formatDate(msg.createdAt)}</span>
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">{msg.content}</p>
+                        <p className="text-xs text-gray-400 mt-2">Sent to {msg.recipients?.length || 0} recipient(s)</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Registered Users List */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Registered Attendees</h3>
+              {registrationsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : registrations.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Name</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Email</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Registered At</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Attendance</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registrations.map((reg) => (
+                        <tr key={reg._id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <span className="text-blue-600 font-medium text-sm">
+                                  {reg.user?.name?.charAt(0) || "?"}
+                                </span>
+                              </div>
+                              <span className="font-medium">{reg.user?.name || "Unknown"}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{reg.user?.email || "N/A"}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{formatDate(reg.registeredAt)}</td>
+                          <td className="py-3 px-4">
+                            {reg.hasAttended ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                                Attended
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                                Not Attended
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            {!reg.hasAttended && (
+                              <button
+                                onClick={() => handleMarkAttendance(reg.user._id)}
+                                className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                              >
+                                Mark Present
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-8">No registrations yet</p>
+              )}
+            </div>
           </div>
         )}
 
+        {/* Settings Tab */}
         {activeTab === "settings" && (
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold mb-4">Event Settings</h3>

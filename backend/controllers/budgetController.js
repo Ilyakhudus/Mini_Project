@@ -203,6 +203,62 @@ exports.grantAccess = async (req, res, next) => {
   }
 }
 
+// Update spent amount directly
+exports.updateBudgetSpent = async (req, res, next) => {
+  try {
+    const { eventId } = req.params
+    const { spent } = req.body
+
+    const event = await Event.findById(eventId)
+
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" })
+    }
+
+    if (event.organizer.toString() !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only organizer can update budget" })
+    }
+
+    event.budget.spent = Number(spent)
+    await event.save()
+
+    res.json({
+      success: true,
+      budget: event.budget,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+// Update income
+exports.updateBudgetIncome = async (req, res, next) => {
+  try {
+    const { eventId } = req.params
+    const { income } = req.body
+
+    const event = await Event.findById(eventId)
+
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" })
+    }
+
+    if (event.organizer.toString() !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only organizer can update budget" })
+    }
+
+    event.budget.income = Number(income)
+    await event.save()
+
+    res.json({
+      success: true,
+      budget: event.budget,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 // Get tasks
 exports.getEventTasks = async (req, res, next) => {
   try {
