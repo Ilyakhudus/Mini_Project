@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { eventsAPI } from "../utils/api"
 import { useAuth } from "../hooks/useAuth"
+import { formatDate } from "../utils/dateUtils"
 
 export default function BudgetAnalysisDashboard() {
   const { eventId } = useParams()
@@ -288,9 +289,7 @@ export default function BudgetAnalysisDashboard() {
                       </select>
                     </div>
                     {task.description && <p className="text-sm text-gray-600 mb-2">{task.description}</p>}
-                    {task.dueDate && (
-                      <p className="text-xs text-gray-500">Due: {new Date(task.dueDate).toLocaleDateString()}</p>
-                    )}
+                    {task.dueDate && <p className="text-xs text-gray-500">Due: {formatDate(task.dueDate)}</p>}
                   </div>
                 ))}
               </div>

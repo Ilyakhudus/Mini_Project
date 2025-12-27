@@ -402,7 +402,7 @@ export default function Landing() {
                   >
                     {event.image && (
                       <img
-                        src={event.image || "/placeholder.svg"}
+                        src={event.image.startsWith("http") ? event.image : `http://localhost:5000${event.image}`}
                         alt={event.title}
                         className="w-full h-28 object-cover group-hover:scale-105 transition"
                       />

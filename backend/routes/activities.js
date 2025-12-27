@@ -1,19 +1,17 @@
-const express = require('express');
-const router = express.Router();
-const { protect } = require('../middleware/auth');
+const express = require("express")
 const {
-  getActivities,
-  getEventActivities,
-  createActivity
-} = require('../controllers/activityController');
+  createActivity,
+  getActivitiesByEvent,
+  updateActivity,
+  deleteActivity,
+} = require("../controllers/activityController")
+const { auth } = require("../middleware/auth")
 
-// Get all activities for the logged-in user
-router.get('/', protect, getActivities);
+const router = express.Router()
 
-// Get activities for a specific event
-router.get('/event/:eventId', protect, getEventActivities);
+router.post("/:eventId", auth, createActivity)
+router.get("/:eventId", getActivitiesByEvent)
+router.put("/:id", auth, updateActivity)
+router.delete("/:id", auth, deleteActivity)
 
-// Create a new activity
-router.post('/', protect, createActivity);
-
-module.exports = router;
+module.exports = router

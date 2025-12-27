@@ -16,6 +16,10 @@ const registrationSchema = new mongoose.Schema({
     enum: ["registered", "cancelled"],
     default: "registered",
   },
+  usedPIN: {
+    type: Boolean,
+    default: false,
+  },
   registeredAt: {
     type: Date,
     default: Date.now,

@@ -37,25 +37,36 @@ exports.addExpense = async (req, res, next) => {
     const { eventId } = req.params
     const { description, amount, category } = req.body
 
+    if (!description || !amount || amount <= 0) {
+      return res.status(400).json({ error: "Description and amount (greater than 0) are required" })
+    }
+
     const event = await Event.findById(eventId)
 
     if (!event) {
       return res.status(404).json({ error: "Event not found" })
     }
 
-    if (event.organizer.toString() !== req.user.id && req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only organizer can add expenses" })
+    const isOrganizer = event.organizer.toString() === req.user.id
+    const isCollaborator = event.collaborators.some((c) => c.userId.toString() === req.user.id)
+
+    if (!isOrganizer && !isCollaborator && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only organizer or collaborators can add expenses" })
     }
 
     const expense = {
-      description,
+      description: description.trim(),
       amount: Number(amount),
-      category,
+      category: category || "other",
       date: new Date(),
     }
 
+    if (!event.budget) {
+      event.budget = { total: 0, income: 0, spent: 0, expenses: [] }
+    }
+
     event.budget.expenses.push(expense)
-    event.budget.spent += Number(amount)
+    event.budget.spent = (event.budget.spent || 0) + Number(amount)
     await event.save()
 
     res.json({
@@ -209,14 +220,25 @@ exports.updateBudgetSpent = async (req, res, next) => {
     const { eventId } = req.params
     const { spent } = req.body
 
+    if (spent === undefined || spent === null) {
+      return res.status(400).json({ error: "Spent amount is required" })
+    }
+
     const event = await Event.findById(eventId)
 
     if (!event) {
       return res.status(404).json({ error: "Event not found" })
     }
 
-    if (event.organizer.toString() !== req.user.id && req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only organizer can update budget" })
+    const isOrganizer = event.organizer.toString() === req.user.id
+    const isCollaborator = event.collaborators.some((c) => c.userId.toString() === req.user.id)
+
+    if (!isOrganizer && !isCollaborator && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only organizer or collaborators can update budget" })
+    }
+
+    if (!event.budget) {
+      event.budget = { total: 0, income: 0, spent: 0, expenses: [] }
     }
 
     event.budget.spent = Number(spent)
@@ -237,14 +259,25 @@ exports.updateBudgetIncome = async (req, res, next) => {
     const { eventId } = req.params
     const { income } = req.body
 
+    if (income === undefined || income === null) {
+      return res.status(400).json({ error: "Income amount is required" })
+    }
+
     const event = await Event.findById(eventId)
 
     if (!event) {
       return res.status(404).json({ error: "Event not found" })
     }
 
-    if (event.organizer.toString() !== req.user.id && req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only organizer can update budget" })
+    const isOrganizer = event.organizer.toString() === req.user.id
+    const isCollaborator = event.collaborators.some((c) => c.userId.toString() === req.user.id)
+
+    if (!isOrganizer && !isCollaborator && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only organizer or collaborators can update budget" })
+    }
+
+    if (!event.budget) {
+      event.budget = { total: 0, income: 0, spent: 0, expenses: [] }
     }
 
     event.budget.income = Number(income)

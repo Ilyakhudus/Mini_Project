@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { eventsAPI, registrationsAPI } from "../utils/api"
 import { useAuth } from "../hooks/useAuth"
+import { formatDate } from "../utils/dateUtils"
 
 export default function EventDetail() {
   const { id } = useParams()
@@ -25,10 +26,18 @@ export default function EventDetail() {
     try {
       setLoading(true)
       const response = await eventsAPI.getEventById(id)
-      setEvent(response.data.event)
+      const eventData = response.data?.event || response.event
+
+      if (!eventData) {
+        setError("Event not found or invalid response from server")
+        return
+      }
+
+      setEvent(eventData)
+      setError("")
     } catch (err) {
-      setError("Failed to load event")
-      console.error(err)
+      console.error("Error fetching event:", err)
+      setError(err.response?.data?.message || "Failed to load event. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -56,7 +65,7 @@ export default function EventDetail() {
       alert("Successfully registered for the event!")
       setShowPinModal(false)
       setPin("")
-      fetchEvent()
+      await fetchEvent()
     } catch (err) {
       const errorMsg = err.response?.data?.error || "Failed to register"
       if (showPinModal) {
@@ -94,32 +103,59 @@ export default function EventDetail() {
   }
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading event details...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!event) {
-    return <div className="min-h-screen flex items-center justify-center">Event not found</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+        <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-red-900 mb-2">Error Loading Event</h2>
+          <p className="text-red-700 mb-4">{error || "Event not found"}</p>
+          <button
+            onClick={() => navigate("/")}
+            className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+          >
+            Go Back Home
+          </button>
+        </div>
+      </div>
+    )
   }
 
-  const capacityPercentage = (event.registeredCount / event.capacity) * 100
+  const capacityPercentage = event.capacity ? ((event.registeredCount || 0) / event.capacity) * 100 : 0
   const isOrganizer = user && event.organizer && user.id === event.organizer._id
   const isCollaborator = user && event.collaborators?.some((c) => c.userId?._id === user.id)
+
+  const imageUrl = event.image ? `http://localhost:5000${event.image}` : null
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        {event.image && (
-          <img
-            src={event.image || "/placeholder.svg"}
-            alt={event.title}
-            className="w-full h-96 object-cover rounded-lg mb-8"
-          />
+        {imageUrl && (
+          <div className="mb-8 rounded-lg overflow-hidden shadow-lg">
+            <img
+              src={imageUrl || "/placeholder.svg"}
+              alt={event.title}
+              className="w-full h-96 object-cover"
+              onError={(e) => {
+                e.currentTarget.src = "/placeholder.svg"
+              }}
+            />
+          </div>
         )}
 
         <div className="bg-white rounded-lg shadow-lg p-8">
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-mono rounded-full">
-              Code: {event.eventCode}
+              Code: {event.eventCode || "N/A"}
             </span>
             <span
               className={`px-3 py-1 text-sm rounded-full ${
@@ -137,7 +173,32 @@ export default function EventDetail() {
 
           <h1 className="text-4xl font-bold text-gray-900 mb-4">{event.title}</h1>
 
-          {event.description && <p className="text-gray-600 mb-6">{event.description}</p>}
+          {event.description && <p className="text-gray-600 mb-6 text-lg">{event.description}</p>}
+
+          {event.mp4Video && (
+            <div className="mb-6 rounded-lg overflow-hidden shadow-lg bg-black">
+              <video controls className="w-full" controlsList="nodownload">
+                <source
+                  src={event.mp4Video.startsWith("http") ? event.mp4Video : `http://localhost:5000${event.mp4Video}`}
+                  type="video/mp4"
+                />
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          )}
+
+          {event.m4Audio && (
+            <div className="mb-6 p-4 bg-purple-50 rounded-lg">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Event Audio</h3>
+              <audio controls className="w-full" controlsList="nodownload">
+                <source
+                  src={event.m4Audio.startsWith("http") ? event.m4Audio : `http://localhost:5000${event.m4Audio}`}
+                  type="audio/mp4"
+                />
+                Your browser does not support the audio tag.
+              </audio>
+            </div>
+          )}
 
           {event.detailedDescription && (
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
@@ -158,13 +219,13 @@ export default function EventDetail() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Event Details</h3>
               <div className="space-y-3">
                 <p>
-                  <span className="font-medium">Date:</span> {new Date(event.date).toLocaleDateString()}
+                  <span className="font-medium">Date:</span> {formatDate(event.date)}
                 </p>
                 <p>
-                  <span className="font-medium">Time:</span> {event.time}
+                  <span className="font-medium">Time:</span> {event.time || "N/A"}
                 </p>
                 <p>
-                  <span className="font-medium">Venue:</span> {event.venue}
+                  <span className="font-medium">Venue:</span> {event.venue || "N/A"}
                 </p>
                 {event.area && (
                   <p>
@@ -172,10 +233,10 @@ export default function EventDetail() {
                   </p>
                 )}
                 <p>
-                  <span className="font-medium">Price:</span> ₹{event.price}
+                  <span className="font-medium">Price:</span> ₹{event.price || 0}
                 </p>
                 <p>
-                  <span className="font-medium">Organizer:</span> {event.organizer?.name}
+                  <span className="font-medium">Organizer:</span> {event.organizer?.name || "N/A"}
                 </p>
               </div>
             </div>
@@ -183,7 +244,7 @@ export default function EventDetail() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Availability</h3>
               <p className="text-2xl font-bold text-blue-600 mb-2">
-                {event.registeredCount}/{event.capacity} Registered
+                {event.registeredCount || 0}/{event.capacity || 0} Registered
               </p>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
@@ -198,37 +259,26 @@ export default function EventDetail() {
                   <p className="text-sm font-medium text-gray-700 mb-2">Event PINs (Visible to organizers only)</p>
                   <p className="text-sm">
                     <span className="font-medium">Organizer PIN:</span>{" "}
-                    <span className="font-mono">{event.organizerPIN}</span>
+                    <span className="font-mono">{event.organizerPIN || "N/A"}</span>
                   </p>
                   <p className="text-sm">
                     <span className="font-medium">Attendee PIN:</span>{" "}
-                    <span className="font-mono">{event.attendeePIN}</span>
+                    <span className="font-mono">{event.attendeePIN || "N/A"}</span>
                   </p>
                 </div>
               )}
             </div>
           </div>
 
-          {error && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-6">{error}</div>}
-
           <div className="flex gap-4">
-            {user && user.role === "admin" ? (
+            {isOrganizer ? (
               <>
                 <button
-                  onClick={handleEdit}
-                  className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  onClick={() => navigate(`/organizer/event/${id}`)}
+                  className="flex-1 px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
                 >
-                  Edit Event
+                  Back to Event Management
                 </button>
-                <button
-                  onClick={handleDelete}
-                  className="flex-1 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                >
-                  Delete Event
-                </button>
-              </>
-            ) : isOrganizer ? (
-              <>
                 <button
                   onClick={handleEdit}
                   className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -243,19 +293,27 @@ export default function EventDetail() {
                 </button>
               </>
             ) : (
-              <button
-                onClick={handleRegister}
-                disabled={registering || event.registeredCount >= event.capacity}
-                className="flex-1 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {registering
-                  ? "Registering..."
-                  : event.registeredCount >= event.capacity
-                    ? "Event Full"
-                    : event.accessType === "invite-only"
-                      ? "Register with PIN"
-                      : "Register Now"}
-              </button>
+              <>
+                <button
+                  onClick={() => navigate(-1)}
+                  className="flex-1 px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+                >
+                  Go Back
+                </button>
+                <button
+                  onClick={handleRegister}
+                  disabled={registering || (event.capacity && event.registeredCount >= event.capacity)}
+                  className="flex-1 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {registering
+                    ? "Registering..."
+                    : event.capacity && event.registeredCount >= event.capacity
+                      ? "Event Full"
+                      : event.accessType === "invite-only"
+                        ? "Register with PIN"
+                        : "Register Now"}
+                </button>
+              </>
             )}
           </div>
         </div>

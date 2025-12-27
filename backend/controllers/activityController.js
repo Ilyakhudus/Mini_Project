@@ -12,7 +12,7 @@ exports.createActivity = async (req, res, next) => {
     }
 
     const isOrganizer = event.organizer.toString() === req.user.id
-    const isCollaborator = event.collaborators.some((c) => c.userId.toString() === req.user.id)
+    const isCollaborator = event.collaborators?.some((c) => c.userId?.toString() === req.user.id)
 
     if (!isOrganizer && !isCollaborator) {
       return res.status(403).json({ error: "Not authorized to create activities" })
@@ -62,7 +62,7 @@ exports.updateActivity = async (req, res, next) => {
 
     const event = await Event.findById(activity.event)
     const isOrganizer = event.organizer.toString() === req.user.id
-    const isCollaborator = event.collaborators.some((c) => c.userId.toString() === req.user.id)
+    const isCollaborator = event.collaborators?.some((c) => c.userId?.toString() === req.user.id)
 
     if (!isOrganizer && !isCollaborator) {
       return res.status(403).json({ error: "Not authorized to update activities" })

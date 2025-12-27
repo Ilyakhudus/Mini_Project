@@ -86,4 +86,14 @@ export const messagesAPI = {
   getEventMessages: (eventId) => api.get(`/messages/event/${eventId}`),
 }
 
+export const pollsAPI = {
+  createPoll: (eventId, data) => api.post(`/polls/event/${eventId}`, data),
+  getEventPolls: (eventId) => api.get(`/polls/event/${eventId}`),
+  getPollById: (pollId) => api.get(`/polls/${pollId}`),
+  respondToPoll: (pollId, optionIndex) => api.post(`/polls/${pollId}/respond`, { optionIndex }),
+  closePoll: (pollId) => api.put(`/polls/${pollId}/close`, {}),
+  deletePoll: (pollId) => api.delete(`/polls/${pollId}`),
+  getPollResults: (pollId) => api.get(`/polls/${pollId}/results`),
+}
+
 export default api

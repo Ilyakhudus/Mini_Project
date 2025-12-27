@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { registrationsAPI } from "../utils/api"
 import Pagination from "../components/Pagination"
+import { formatDate } from "../utils/dateUtils"
 
 export default function UserRegistrations() {
   const [registrations, setRegistrations] = useState([])
@@ -62,9 +63,9 @@ export default function UserRegistrations() {
                   <div>
                     <h3 className="text-lg font-bold text-gray-900">{registration.event.title}</h3>
                     <p className="text-sm text-gray-600">
-                      {new Date(registration.event.date).toLocaleDateString()} at {registration.event.venue}
+                      {formatDate(registration.event.date)} at {registration.event.venue}
                     </p>
-                    <p className="text-lg font-bold text-blue-600 mt-2">Price: ${registration.event.price}</p>
+                    <p className="text-lg font-bold text-blue-600 mt-2">Price: ₹{registration.event.price}</p>
                   </div>
                   <button
                     onClick={() => handleCancel(registration._id)}

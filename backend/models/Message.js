@@ -5,16 +5,18 @@ const pollOptionSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  votes: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+  votes: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+      votedAt: {
+        type: Date,
+        default: Date.now,
+      },
     },
-    votedAt: {
-      type: Date,
-      default: Date.now,
-    },
-  }],
+  ],
 })
 
 const messageSchema = new mongoose.Schema({
@@ -36,20 +38,16 @@ const messageSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please provide message content"],
   },
-  // Message type: 'text', 'poll', 'media'
   messageType: {
     type: String,
     enum: ["text", "poll", "media"],
     default: "text",
   },
-  // Poll options (only for messageType: 'poll')
   pollOptions: [pollOptionSchema],
-  // Allow multiple votes
   pollMultiSelect: {
     type: Boolean,
     default: false,
   },
-  // Media attachments (for mp3, mp4, images)
   mediaUrl: {
     type: String,
   },

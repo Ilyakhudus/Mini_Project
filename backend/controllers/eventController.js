@@ -2,6 +2,7 @@ const Event = require("../models/Event")
 const Registration = require("../models/Registration")
 const Attendance = require("../models/Attendance")
 const Feedback = require("../models/Feedback")
+const Poll = require("../models/Polls") // Added Poll model import
 
 exports.createEvent = async (req, res, next) => {
   try {
@@ -45,7 +46,9 @@ exports.createEvent = async (req, res, next) => {
       images: images || [],
       videos: videos || [],
       organizer: req.user.id,
-      image: req.file ? `/uploads/${req.file.filename}` : null,
+      image: req.files?.image?.[0] ? `/uploads/${req.files.image[0].filename}` : null,
+      mp4Video: req.files?.mp4Video?.[0] ? `/uploads/${req.files.mp4Video[0].filename}` : req.body.mp4VideoUrl || null,
+      m4Audio: req.files?.m4Audio?.[0] ? `/uploads/${req.files.m4Audio[0].filename}` : req.body.m4AudioUrl || null,
       budget: {
         total: budget || 0,
         spent: 0,
@@ -97,11 +100,19 @@ exports.getEvents = async (req, res, next) => {
       .limit(Number.parseInt(limit))
       .sort({ date: 1 })
 
+    const eventsWithSyncedCounts = await Promise.all(
+      events.map(async (event) => {
+        const actualRegisteredCount = await Registration.countDocuments({ event: event._id, status: "registered" })
+        event.registeredCount = actualRegisteredCount
+        return event
+      }),
+    )
+
     const total = await Event.countDocuments(query)
 
     res.json({
       success: true,
-      events,
+      events: eventsWithSyncedCounts,
       pagination: {
         total,
         page: Number.parseInt(page),
@@ -125,13 +136,16 @@ exports.getEventById = async (req, res, next) => {
       return res.status(404).json({ error: "Event not found" })
     }
 
+    const actualRegisteredCount = await Registration.countDocuments({ event: event._id, status: "registered" })
+    event.registeredCount = actualRegisteredCount
+    await event.save()
+
     const isOrganizer = req.user && event.organizer._id.toString() === req.user.id
     const isCollaborator =
       req.user &&
       event.collaborators &&
       event.collaborators.some((c) => c.userId && c.userId._id && c.userId._id.toString() === req.user.id)
 
-    // Always hide PINs for non-organizers and non-collaborators (including unauthenticated users)
     if (!isOrganizer && !isCollaborator) {
       event.organizerPIN = undefined
       event.attendeePIN = undefined
@@ -207,19 +221,37 @@ exports.updateEvent = async (req, res, next) => {
       images,
       videos,
       budget,
+      inviteMessage,
     } = req.body
 
-    console.log("[v0] Updating event with data:", req.body)
+    if (title !== undefined && (!title || title.trim() === "")) {
+      return res.status(400).json({ error: "Event title cannot be empty" })
+    }
 
-    if (title !== undefined) event.title = title
-    if (description !== undefined) event.description = description
+    if (date !== undefined && date !== "") {
+      try {
+        if (typeof date === "string" && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const dateObj = new Date(date + "T00:00:00Z")
+          if (isNaN(dateObj.getTime())) {
+            return res.status(400).json({ error: "Invalid date format" })
+          }
+          event.date = dateObj
+        } else {
+          return res.status(400).json({ error: "Invalid date format. Expected YYYY-MM-DD" })
+        }
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid date format" })
+      }
+    }
+
+    if (title !== undefined) event.title = title.trim()
+    if (description !== undefined) event.description = description // Added description update
     if (detailedDescription !== undefined) event.detailedDescription = detailedDescription
     if (activitiesAndBenefits !== undefined) event.activitiesAndBenefits = activitiesAndBenefits
-    if (date !== undefined) event.date = date
     if (time !== undefined) event.time = time
-    if (venue !== undefined) event.venue = venue
-    if (price !== undefined) event.price = price
-    if (capacity !== undefined) event.capacity = capacity
+    if (venue !== undefined) event.venue = venue.trim()
+    if (price !== undefined) event.price = Number(price) || 0
+    if (capacity !== undefined) event.capacity = Number(capacity) || 100
     if (category !== undefined) event.category = category
     if (status !== undefined) event.status = status
     if (eventType !== undefined) event.eventType = eventType
@@ -227,27 +259,39 @@ exports.updateEvent = async (req, res, next) => {
     if (accessType !== undefined) event.accessType = accessType
     if (images !== undefined) event.images = images
     if (videos !== undefined) event.videos = videos
-    if (req.file) event.image = `/uploads/${req.file.filename}`
-    if (budget !== undefined) {
-      event.budget = {
-        total: Number(budget),
-        spent: event.budget?.spent || 0,
-        expenses: event.budget?.expenses || [],
-      }
+    if (inviteMessage !== undefined) event.inviteMessage = inviteMessage
+
+    if (req.files?.image?.[0]) {
+      event.image = `/uploads/${req.files.image[0].filename}`
+    }
+    if (req.files?.mp4Video?.[0]) {
+      event.mp4Video = `/uploads/${req.files.mp4Video[0].filename}`
+    } else if (req.body.mp4VideoUrl) {
+      event.mp4Video = req.body.mp4VideoUrl
     }
 
-    event.updatedAt = Date.now()
-    await event.save({ validateModifiedOnly: true })
-    await event.populate("organizer", "name email")
+    if (req.files?.m4Audio?.[0]) {
+      event.m4Audio = `/uploads/${req.files.m4Audio[0].filename}`
+    } else if (req.body.m4AudioUrl) {
+      event.m4Audio = req.body.m4AudioUrl
+    }
 
-    console.log("[v0] Event updated successfully:", event)
+    if (budget !== undefined) {
+      event.budget.total = Number(budget) || 0
+      if (!event.budget.spent) event.budget.spent = 0
+      if (!event.budget.income) event.budget.income = 0
+      if (!event.budget.expenses) event.budget.expenses = []
+    }
+
+    event.updatedAt = new Date()
+    await event.save()
+    await event.populate("organizer", "name email")
 
     res.json({
       success: true,
       event,
     })
   } catch (error) {
-    console.error("[v0] Error updating event:", error)
     next(error)
   }
 }
@@ -289,13 +333,21 @@ exports.getOrganizerEvents = async (req, res, next) => {
       .limit(Number.parseInt(limit))
       .sort({ date: -1 })
 
+    const eventsWithSyncedCounts = await Promise.all(
+      events.map(async (event) => {
+        const actualRegisteredCount = await Registration.countDocuments({ event: event._id, status: "registered" })
+        event.registeredCount = actualRegisteredCount
+        return event
+      }),
+    )
+
     const total = await Event.countDocuments({
       $or: [{ organizer: req.user.id }, { "collaborators.userId": req.user.id }],
     })
 
     res.json({
       success: true,
-      events,
+      events: eventsWithSyncedCounts,
       pagination: {
         total,
         page: Number.parseInt(page),
@@ -355,12 +407,16 @@ exports.addTask = async (req, res, next) => {
       return res.status(403).json({ error: "Not authorized to add tasks" })
     }
 
+    if (!title || title.trim() === "") {
+      return res.status(400).json({ error: "Task title is required" })
+    }
+
     event.tasks.push({
-      title,
-      description,
-      assignedTo,
-      budget: budget || 0,
-      deadline,
+      title: title.trim(),
+      description: description || "",
+      assignedTo: assignedTo || null,
+      budget: budget ? Number(budget) : 0,
+      deadline: deadline || null,
     })
 
     await event.save()
@@ -380,8 +436,6 @@ exports.updateTaskStatus = async (req, res, next) => {
     const { id, taskId } = req.params
     const { status, spent } = req.body
 
-    console.log("[v0] Updating task status:", { eventId: id, taskId, status, spent })
-
     const event = await Event.findById(id)
 
     if (!event) {
@@ -394,7 +448,6 @@ exports.updateTaskStatus = async (req, res, next) => {
       return res.status(404).json({ error: "Task not found" })
     }
 
-    // Check if user is assigned to this task or is organizer/collaborator
     const isOrganizer = event.organizer.toString() === req.user.id
     const isCollaborator = event.collaborators.some((c) => c.userId.toString() === req.user.id)
     const isAssigned = task.assignedTo && task.assignedTo.toString() === req.user.id
@@ -410,10 +463,8 @@ exports.updateTaskStatus = async (req, res, next) => {
     if (spent !== undefined) task.spent = spent
     if (status === "completed") task.completedAt = Date.now()
 
-    // If task is newly completed and has a budget, add to event's spent amount
     if (wasNotCompleted && isNowCompleted && task.budget > 0) {
       event.budget.spent = (event.budget.spent || 0) + task.budget
-      // Also add as an expense for tracking
       event.budget.expenses.push({
         description: `Task completed: ${task.title}`,
         amount: task.budget,
@@ -428,10 +479,9 @@ exports.updateTaskStatus = async (req, res, next) => {
     res.json({
       success: true,
       task,
-      budget: event.budget, // Return updated budget
+      budget: event.budget,
     })
   } catch (error) {
-    console.error("[v0] Error updating task status:", error)
     next(error)
   }
 }
@@ -456,12 +506,10 @@ exports.getDashboard = async (req, res, next) => {
       return res.status(403).json({ error: "Not authorized to view dashboard" })
     }
 
-    // Calculate task statistics
     const totalTasks = event.tasks ? event.tasks.length : 0
     const completedTasks = event.tasks ? event.tasks.filter((t) => t.status === "completed").length : 0
     const pendingTasks = event.tasks ? event.tasks.filter((t) => t.status === "pending").length : 0
 
-    // Calculate task stats per collaborator
     const collaboratorStats = {}
     if (event.tasks) {
       event.tasks.forEach((task) => {
@@ -482,16 +530,13 @@ exports.getDashboard = async (req, res, next) => {
       })
     }
 
-    // Calculate budget statistics
     const totalBudget = event.tasks ? event.tasks.reduce((sum, task) => sum + (task.budget || 0), 0) : 0
     const totalSpent = event.tasks ? event.tasks.reduce((sum, task) => sum + (task.spent || 0), 0) : 0
     const budgetRemaining = totalBudget - totalSpent
 
-    // Get attendance and registration stats
     const registeredCount = await Registration.countDocuments({ event: event._id, status: "registered" })
     const attendingCount = await Attendance.countDocuments({ event: event._id })
 
-    // Get feedback stats
     const feedbacks = await Feedback.find({ event: event._id })
     const feedbackStats = {
       positive: feedbacks.filter((f) => f.sentiment === "positive").length,
@@ -499,6 +544,19 @@ exports.getDashboard = async (req, res, next) => {
       negative: feedbacks.filter((f) => f.sentiment === "negative").length,
       total: feedbacks.length,
     }
+
+    const polls = await Poll.find({ eventId: event._id })
+    const pollStats = polls.map((poll) => ({
+      _id: poll._id,
+      question: poll.question,
+      totalResponses: poll.responses.length,
+      isActive: poll.isActive,
+      options: poll.options.map((opt) => ({
+        optionText: opt.optionText,
+        votes: opt.votes,
+        percentage: poll.responses.length > 0 ? ((opt.votes / poll.responses.length) * 100).toFixed(2) : 0,
+      })),
+    }))
 
     res.json({
       success: true,
@@ -519,6 +577,7 @@ exports.getDashboard = async (req, res, next) => {
           attending: attendingCount,
         },
         feedback: feedbackStats,
+        polls: pollStats, // Added polls to dashboard response
       },
     })
   } catch (error) {
@@ -586,20 +645,17 @@ exports.markAttendance = async (req, res, next) => {
       return res.status(403).json({ error: "Not authorized to mark attendance" })
     }
 
-    // Check if user is registered
     const registration = await Registration.findOne({ event: event._id, user: userId, status: "registered" })
     if (!registration) {
       return res.status(400).json({ error: "User is not registered for this event" })
     }
 
-    // Create or update attendance
     const attendance = await Attendance.findOneAndUpdate(
       { event: event._id, user: userId },
       { markedBy: req.user.id },
       { upsert: true, new: true },
     )
 
-    // Update attending count
     const attendingCount = await Attendance.countDocuments({ event: event._id })
     event.attendingCount = attendingCount
     await event.save()
@@ -613,7 +669,6 @@ exports.markAttendance = async (req, res, next) => {
   }
 }
 
-// New endpoint to get event registrations with user details
 exports.getEventRegistrations = async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.id)
@@ -624,7 +679,8 @@ exports.getEventRegistrations = async (req, res, next) => {
 
     const isOrganizer = event.organizer.toString() === req.user.id
     const isCollaborator =
-      event.collaborators && event.collaborators.some((c) => c.userId && c.userId.toString() === req.user.id)
+      event.collaborators &&
+      event.collaborators.some((c) => c.userId && c.userId._id && c.userId._id.toString() === req.user.id)
 
     if (!isOrganizer && !isCollaborator && req.user.role !== "admin") {
       return res.status(403).json({ error: "Not authorized to view registrations" })
@@ -634,11 +690,9 @@ exports.getEventRegistrations = async (req, res, next) => {
       .populate("user", "name email")
       .sort({ registeredAt: -1 })
 
-    // Get attendance data
     const attendanceRecords = await Attendance.find({ event: event._id })
     const attendedUserIds = attendanceRecords.map((a) => a.user.toString())
 
-    // Add attendance status to each registration
     const registrationsWithAttendance = registrations.map((reg) => ({
       _id: reg._id,
       user: reg.user,

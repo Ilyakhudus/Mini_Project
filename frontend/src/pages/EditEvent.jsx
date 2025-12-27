@@ -16,6 +16,8 @@ export default function EditEvent() {
     price: 0,
     capacity: 100,
     category: "",
+    eventType: "",
+    area: "",
   })
   const [image, setImage] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -30,15 +32,19 @@ export default function EditEvent() {
     try {
       const response = await eventsAPI.getEventById(id)
       const event = response.data.event
+      const dateStr =
+        typeof event.date === "string" ? event.date.split("T")[0] : new Date(event.date).toISOString().split("T")[0]
       setFormData({
         title: event.title,
         description: event.description || "",
-        date: event.date.split("T")[0],
+        date: dateStr,
         time: event.time,
         venue: event.venue,
         price: event.price,
         capacity: event.capacity,
         category: event.category || "",
+        eventType: event.eventType || "",
+        area: event.area || "",
       })
       setLoading(false)
     } catch (err) {
@@ -63,16 +69,26 @@ export default function EditEvent() {
 
     try {
       const form = new FormData()
-      Object.keys(formData).forEach((key) => {
-        form.append(key, formData[key])
-      })
+      form.append("title", formData.title)
+      form.append("description", formData.description)
+      form.append("date", formData.date)
+      form.append("time", formData.time)
+      form.append("venue", formData.venue)
+      form.append("price", formData.price)
+      form.append("capacity", formData.capacity)
+      form.append("category", formData.category)
+      form.append("eventType", formData.eventType)
+      form.append("area", formData.area)
+
       if (image) {
         form.append("image", image)
       }
 
-      await eventsAPI.updateEvent(id, form)
+      const response = await eventsAPI.updateEvent(id, form)
+      console.log("[v0] Event updated successfully:", response.data)
       navigate(`/events/${id}`)
     } catch (err) {
+      console.log("[v0] Error updating event:", err)
       setError(err.response?.data?.error || "Failed to update event")
     } finally {
       setSubmitting(false)
@@ -112,6 +128,41 @@ export default function EditEvent() {
               rows="4"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             ></textarea>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+              <select
+                name="eventType"
+                required
+                value={formData.eventType}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Event Type</option>
+                <option value="seminar">Seminar</option>
+                <option value="concert">Concert</option>
+                <option value="meet-up">Meet-up</option>
+                <option value="workshop">Workshop</option>
+                <option value="conference">Conference</option>
+                <option value="webinar">Webinar</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Area</label>
+              <input
+                type="text"
+                name="area"
+                required
+                value={formData.area}
+                onChange={handleChange}
+                placeholder="e.g. Technology, Sports, Art"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">

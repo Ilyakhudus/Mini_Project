@@ -20,11 +20,15 @@ const eventSchema = new mongoose.Schema({
   eventType: {
     type: String,
     enum: ["seminar", "concert", "meet-up", "workshop", "conference", "webinar", "other"],
-    required: [true, "Please provide event type"],
+    required: function () {
+      return this.isNew
+    },
   },
   area: {
     type: String,
-    required: [true, "Please provide event area"],
+    required: function () {
+      return this.isNew
+    },
   },
   accessType: {
     type: String,
@@ -53,6 +57,26 @@ const eventSchema = new mongoose.Schema({
   venue: {
     type: String,
     required: [true, "Please provide venue"],
+  },
+  inviteMessage: {
+    type: String,
+    default: null,
+  },
+  mp4Video: {
+    type: String,
+    default: null,
+  },
+  mp4VideoUrl: {
+    type: String,
+    default: null,
+  },
+  m4Audio: {
+    type: String,
+    default: null,
+  },
+  m4AudioUrl: {
+    type: String,
+    default: null,
   },
   price: {
     type: Number,

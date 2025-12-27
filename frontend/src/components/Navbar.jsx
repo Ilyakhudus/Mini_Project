@@ -39,14 +39,8 @@ export default function Navbar() {
                     <Link to="/organizer" className="hover:text-blue-200">
                       Organizer Hub
                     </Link>
-                    <Link to="/dashboard" className="hover:text-blue-200">
-                      Stats
-                    </Link>
                   </>
                 ) : null}
-                <Link to="/my-registrations" className="hover:text-blue-200">
-                  My Registrations
-                </Link>
                 <button onClick={handleLogout} className="hover:text-blue-200">
                   Logout
                 </button>

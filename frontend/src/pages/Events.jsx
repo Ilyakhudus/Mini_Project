@@ -23,6 +23,27 @@ export default function Events() {
     fetchEvents()
   }, [page, search, eventCode, eventType, accessType])
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log("[v0] Page became visible, refetching events")
+        fetchEvents()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [page, search, eventCode, eventType, accessType])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log("[v0] Refreshing events (30s interval)")
+      fetchEvents()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [page, search, eventCode, eventType, accessType])
+
   const fetchEvents = async () => {
     try {
       setLoading(true)

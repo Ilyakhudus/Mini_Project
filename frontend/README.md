@@ -20,10 +20,10 @@ React + Vite frontend for Event Management System with Tailwind CSS styling.
 - tailwindcss: CSS framework
 
 ## Running the Application
-\`\`\`bash
+```bash
 npm install
 npm run dev
-\`\`\`
+```
 
 Frontend runs on port 3000 by default.
 

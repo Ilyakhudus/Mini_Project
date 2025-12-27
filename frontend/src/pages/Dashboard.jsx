@@ -3,11 +3,15 @@
 import { useState, useEffect } from "react"
 import { registrationsAPI, eventsAPI } from "../utils/api"
 import { useAuth } from "../hooks/useAuth"
+import { formatDate } from "../utils/dateUtils"
+import { useNavigate } from "react-router-dom"
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [stats, setStats] = useState(null)
   const [events, setEvents] = useState([])
+  const [dashboards, setDashboards] = useState({}) // store dashboards per event
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,6 +26,17 @@ export default function Dashboard() {
       if (user.role === "organizer") {
         const eventsResponse = await eventsAPI.getOrganizerEvents()
         setEvents(eventsResponse.data.events)
+
+        const dashboardsData = {}
+        for (const event of eventsResponse.data.events) {
+          try {
+            const dashboardResponse = await eventsAPI.getDashboard(event._id)
+            dashboardsData[event._id] = dashboardResponse.data.dashboard
+          } catch (err) {
+            console.error(`Failed to fetch dashboard for event ${event._id}:`, err)
+          }
+        }
+        setDashboards(dashboardsData)
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err)
@@ -63,29 +78,93 @@ export default function Dashboard() {
         )}
 
         {user.role === "organizer" && events.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">My Events</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4">Title</th>
-                    <th className="text-left py-3 px-4">Date</th>
-                    <th className="text-left py-3 px-4">Registrations</th>
-                    <th className="text-left py-3 px-4">Capacity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map((event) => (
-                    <tr key={event._id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">{event.title}</td>
-                      <td className="py-3 px-4">{new Date(event.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-4">{event.registeredCount}</td>
-                      <td className="py-3 px-4">{event.capacity}</td>
+          <div className="space-y-8">
+            <div className="bg-white rounded-lg shadow p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">My Events</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4">Title</th>
+                      <th className="text-left py-3 px-4">Date</th>
+                      <th className="text-left py-3 px-4">Registrations</th>
+                      <th className="text-left py-3 px-4">Capacity</th>
+                      <th className="text-left py-3 px-4">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {events.map((event) => (
+                      <tr key={event._id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4">{event.title}</td>
+                        <td className="py-3 px-4">{formatDate(event.date)}</td>
+                        <td className="py-3 px-4">{event.registeredCount}</td>
+                        <td className="py-3 px-4">{event.capacity}</td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => navigate(`/organizer/event/${event._id}`)}
+                            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Poll Responses</h2>
+              <div className="space-y-6">
+                {events.map((event) => {
+                  const dashboard = dashboards[event._id]
+                  const polls = dashboard?.polls || []
+
+                  if (polls.length === 0) {
+                    return (
+                      <div key={event._id} className="border-t pt-6 first:border-t-0 first:pt-0">
+                        <h3 className="font-semibold text-gray-700 mb-4">{event.title}</h3>
+                        <p className="text-gray-500 text-sm">No polls created</p>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={event._id} className="border-t pt-6 first:border-t-0 first:pt-0">
+                      <h3 className="font-semibold text-gray-700 mb-4">{event.title}</h3>
+                      <div className="space-y-4">
+                        {polls.map((poll) => (
+                          <div key={poll._id} className="bg-gray-50 p-4 rounded-lg">
+                            <h4 className="font-medium text-gray-900 mb-3">{poll.question}</h4>
+                            <div className="space-y-2">
+                              {poll.options.map((option, idx) => (
+                                <div key={idx}>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm text-gray-700">{option.optionText}</span>
+                                    <span className="text-sm font-medium text-gray-600">
+                                      {option.votes} ({option.percentage}%)
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-blue-600 h-2 rounded-full"
+                                      style={{ width: `${option.percentage}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-3">
+                              Total Responses: {poll.totalResponses} | Status: {poll.isActive ? "Active" : "Closed"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}

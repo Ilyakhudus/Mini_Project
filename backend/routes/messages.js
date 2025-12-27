@@ -1,10 +1,10 @@
 const express = require("express")
-const { 
-  sendMessage, 
-  getUserMessages, 
-  markAsRead, 
+const {
+  sendMessage,
+  getUserMessages,
+  markAsRead,
   getEventMessages,
-  votePoll 
+  votePoll,
 } = require("../controllers/messageController")
 const { auth } = require("../middleware/auth")
 

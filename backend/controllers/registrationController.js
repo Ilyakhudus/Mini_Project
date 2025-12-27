@@ -35,6 +35,9 @@ exports.registerEvent = async (req, res, next) => {
       console.log("[v0] PIN verified successfully")
     }
 
+    const actualRegisteredCount = await Registration.countDocuments({ event: eventId, status: "registered" })
+    event.registeredCount = actualRegisteredCount
+
     if (event.registeredCount >= event.capacity) {
       console.log("[v0] Event at capacity:", { registeredCount: event.registeredCount, capacity: event.capacity })
       return res.status(400).json({ error: "Event capacity full" })
@@ -55,7 +58,8 @@ exports.registerEvent = async (req, res, next) => {
         existingRegistration.registeredAt = Date.now()
         await existingRegistration.save()
 
-        event.registeredCount += 1
+        const updatedCount = await Registration.countDocuments({ event: eventId, status: "registered" })
+        event.registeredCount = updatedCount
         await event.save()
 
         await existingRegistration.populate("event", "title date time venue price image eventCode eventType area")
@@ -82,7 +86,8 @@ exports.registerEvent = async (req, res, next) => {
 
     await registration.save()
 
-    event.registeredCount = (event.registeredCount || 0) + 1
+    const newCount = await Registration.countDocuments({ event: eventId, status: "registered" })
+    event.registeredCount = newCount
     await event.save()
 
     console.log("[v0] Registration saved, updating event count to:", event.registeredCount)
@@ -114,10 +119,12 @@ exports.cancelRegistration = async (req, res, next) => {
     }
 
     const event = await Event.findById(registration.event)
-    event.registeredCount = Math.max(0, event.registeredCount - 1)
-    await event.save()
 
     await Registration.findByIdAndDelete(req.params.id)
+
+    const updatedCount = await Registration.countDocuments({ event: registration.event, status: "registered" })
+    event.registeredCount = updatedCount
+    await event.save()
 
     res.json({
       success: true,

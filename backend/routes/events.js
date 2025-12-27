@@ -13,14 +13,14 @@ const {
   getDashboard,
   generateInviteMessage,
   markAttendance,
-  getEventRegistrations, // Add new import
+  getEventRegistrations,
 } = require("../controllers/eventController")
 const {
   getEventBudget,
   addExpense,
   updateBudgetTotal,
-  updateBudgetSpent, // Add new import
-  updateBudgetIncome, // Add new import
+  updateBudgetSpent,
+  updateBudgetIncome,
   grantAccess,
   getEventTasks,
 } = require("../controllers/budgetController")
@@ -34,8 +34,28 @@ router.post("/verify-pin", auth, verifyPINAndGetEvent)
 
 router.get("/", getEvents)
 router.get("/:id", optionalAuth, getEventById)
-router.post("/", auth, authorize("organizer", "admin"), upload.single("image"), createEvent)
-router.put("/:id", auth, authorize("organizer", "admin"), upload.single("image"), updateEvent)
+router.post(
+  "/",
+  auth,
+  authorize("organizer", "admin"),
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "mp4Video", maxCount: 1 },
+    { name: "m4Audio", maxCount: 1 },
+  ]),
+  createEvent,
+)
+router.put(
+  "/:id",
+  auth,
+  authorize("organizer", "admin"),
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "mp4Video", maxCount: 1 },
+    { name: "m4Audio", maxCount: 1 },
+  ]),
+  updateEvent,
+)
 router.delete("/:id", auth, authorize("organizer", "admin"), deleteEvent)
 
 router.post("/:id/collaborators", auth, authorize("organizer", "admin"), addCollaborator)

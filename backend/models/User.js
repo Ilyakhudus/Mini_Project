@@ -25,6 +25,16 @@ const userSchema = new mongoose.Schema({
     default: "attendee",
   },
   profileImage: String,
+  teamEvents: [
+    {
+      eventId: mongoose.Schema.Types.ObjectId,
+      role: {
+        type: String,
+        enum: ["organizer", "team-lead", "team-member"],
+        default: "team-member",
+      },
+    },
+  ],
   createdAt: {
     type: Date,
     default: Date.now,
