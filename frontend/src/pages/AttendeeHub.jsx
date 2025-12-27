@@ -33,10 +33,12 @@ export default function AttendeeHub() {
   const [organizerMessages, setOrganizerMessages] = useState([])
   const [unreadMessageCount, setUnreadMessageCount] = useState(0)
 
+  // PIN Modal for invite-only registration
   const [pinModalEvent, setPinModalEvent] = useState(null)
   const [pinInput, setPinInput] = useState("")
   const [pinError, setPinError] = useState("")
   const [pinLoading, setPinLoading] = useState(false)
+  const [showPinModal, setShowPinModal] = useState(false)
 
   useEffect(() => {
     fetchInitialData()
@@ -110,11 +112,34 @@ export default function AttendeeHub() {
     try {
       await messagesAPI.markAsRead(messageId)
       setOrganizerMessages((prev) =>
-        prev.map((msg) => (msg._id === messageId ? { ...msg, read: true, readAt: new Date() } : msg)),
+        prev.map((msg) => (msg._id === messageId ? { ...msg, read: true, readAt: new Date() } : msg))
       )
       setUnreadMessageCount((prev) => Math.max(0, prev - 1))
     } catch (err) {
       console.error("Failed to mark message as read", err)
+    }
+  }
+
+  // Handle voting on a poll
+  const handleVotePoll = async (messageId, optionIndex) => {
+    try {
+      const response = await messagesAPI.votePoll(messageId, optionIndex)
+      // Update the message in state with new poll results
+      setOrganizerMessages((prev) =>
+        prev.map((msg) => {
+          if (msg._id === messageId) {
+            return {
+              ...msg,
+              pollOptions: response.data.pollResults,
+              userVotes: response.data.userVotes,
+            }
+          }
+          return msg
+        })
+      )
+    } catch (err) {
+      console.error("Failed to vote on poll", err)
+      alert(err.response?.data?.error || "Failed to submit vote")
     }
   }
 
@@ -127,7 +152,7 @@ export default function AttendeeHub() {
         categoryFilter,
         eventTypeFilter,
         accessTypeFilter,
-        "",
+        ""
       )
       setEvents(response.data.events)
     } catch (err) {
@@ -135,8 +160,10 @@ export default function AttendeeHub() {
     }
   }
 
+  // FIXED: Register button now properly handles invite-only events by showing PIN modal
   const handleRegister = async (event) => {
     if (event.accessType === "invite-only") {
+      // Show PIN modal for invite-only events
       setPinModalEvent(event)
       setPinInput("")
       setPinError("")
@@ -144,6 +171,7 @@ export default function AttendeeHub() {
       return
     }
 
+    // For open events, register directly
     try {
       await registrationsAPI.registerEvent(event._id)
       alert("Successfully registered for the event!")
@@ -153,6 +181,7 @@ export default function AttendeeHub() {
     }
   }
 
+  // Handle PIN submission for invite-only event registration
   const handlePinSubmit = async (e) => {
     e.preventDefault()
     setPinError("")
@@ -229,8 +258,6 @@ export default function AttendeeHub() {
     const systemCount = !updatesViewed ? systemUpdates.length : 0
     return systemCount + unreadMessageCount
   }
-
-  const [showPinModal, setShowPinModal] = useState(false)
 
   if (loading) {
     return (
@@ -460,6 +487,7 @@ export default function AttendeeHub() {
                         >
                           Details
                         </Link>
+                        {/* FIXED: Register button now works for invite-only events */}
                         <button
                           onClick={() => handleRegister(event)}
                           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition"
@@ -554,6 +582,7 @@ export default function AttendeeHub() {
           </div>
         )}
 
+        {/* Updates Tab - Now includes poll support */}
         {activeTab === "updates" && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Updates</h2>
@@ -579,7 +608,7 @@ export default function AttendeeHub() {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Organizer Messages Section */}
+                {/* Organizer Messages Section - Now with Poll Support */}
                 {organizerMessages.length > 0 && (
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Messages from Organizers</h3>
@@ -587,24 +616,55 @@ export default function AttendeeHub() {
                       {organizerMessages.map((message) => (
                         <div
                           key={message._id}
-                          className={`bg-white rounded-lg shadow p-6 border-l-4 border-purple-500 ${
-                            !message.read ? "ring-2 ring-purple-200" : ""
-                          }`}
+                          className={`bg-white rounded-lg shadow p-6 border-l-4 ${
+                            message.messageType === "poll" ? "border-amber-500" : "border-purple-500"
+                          } ${!message.read ? "ring-2 ring-purple-200" : ""}`}
                         >
                           <div className="flex items-start gap-4">
-                            <div className="p-2 rounded-full bg-purple-100 text-purple-600">
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                                />
-                              </svg>
+                            <div
+                              className={`p-2 rounded-full ${
+                                message.messageType === "poll"
+                                  ? "bg-amber-100 text-amber-600"
+                                  : "bg-purple-100 text-purple-600"
+                              }`}
+                            >
+                              {message.messageType === "poll" ? (
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                                  />
+                                </svg>
+                              ) : message.messageType === "media" ? (
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                  />
+                                </svg>
+                              ) : (
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                                  />
+                                </svg>
+                              )}
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
                                 <h4 className="font-semibold text-gray-900">{message.title}</h4>
+                                {message.messageType === "poll" && (
+                                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+                                    Poll
+                                  </span>
+                                )}
                                 {!message.read && (
                                   <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
                                     New
@@ -614,7 +674,103 @@ export default function AttendeeHub() {
                               <p className="text-sm text-purple-600 mb-2">
                                 From: {message.event?.title || "Event"} - {message.sender?.name || "Organizer"}
                               </p>
-                              <p className="text-gray-600">{message.content}</p>
+                              <p className="text-gray-600 mb-3">{message.content}</p>
+
+                              {/* Media Content */}
+                              {message.messageType === "media" && message.mediaUrl && (
+                                <div className="mb-4">
+                                  {message.mediaType === "image" && (
+                                    <img
+                                      src={message.mediaUrl}
+                                      alt="Media attachment"
+                                      className="max-w-full h-auto rounded-lg"
+                                    />
+                                  )}
+                                  {message.mediaType === "audio" && (
+                                    <audio controls className="w-full">
+                                      <source src={message.mediaUrl} />
+                                      Your browser does not support the audio element.
+                                    </audio>
+                                  )}
+                                  {message.mediaType === "video" && (
+                                    <video controls className="w-full rounded-lg">
+                                      <source src={message.mediaUrl} />
+                                      Your browser does not support the video element.
+                                    </video>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Poll Options */}
+                              {message.messageType === "poll" && message.pollOptions && (
+                                <div className="space-y-2 mt-4">
+                                  <p className="text-sm text-gray-500 mb-2">
+                                    {message.pollMultiSelect
+                                      ? "Select all that apply:"
+                                      : "Select one option:"}
+                                  </p>
+                                  {message.pollOptions.map((option, index) => {
+                                    const totalVotes = message.pollOptions.reduce(
+                                      (sum, opt) => sum + opt.voteCount,
+                                      0
+                                    )
+                                    const percentage =
+                                      totalVotes > 0
+                                        ? Math.round((option.voteCount / totalVotes) * 100)
+                                        : 0
+                                    const isSelected = message.userVotes?.includes(index)
+
+                                    return (
+                                      <button
+                                        key={index}
+                                        onClick={() => handleVotePoll(message._id, index)}
+                                        className={`w-full text-left p-3 rounded-lg border transition relative overflow-hidden ${
+                                          isSelected
+                                            ? "border-blue-500 bg-blue-50"
+                                            : "border-gray-200 hover:border-blue-300"
+                                        }`}
+                                      >
+                                        {/* Progress bar background */}
+                                        <div
+                                          className="absolute inset-0 bg-blue-100 transition-all"
+                                          style={{ width: `${percentage}%`, opacity: 0.3 }}
+                                        />
+                                        <div className="relative flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <div
+                                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                                isSelected
+                                                  ? "border-blue-500 bg-blue-500"
+                                                  : "border-gray-300"
+                                              }`}
+                                            >
+                                              {isSelected && (
+                                                <svg
+                                                  className="w-3 h-3 text-white"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 20 20"
+                                                >
+                                                  <path
+                                                    fillRule="evenodd"
+                                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                    clipRule="evenodd"
+                                                  />
+                                                </svg>
+                                              )}
+                                            </div>
+                                            <span className="font-medium">{option.text}</span>
+                                          </div>
+                                          <span className="text-sm text-gray-500">
+                                            {option.voteCount} vote{option.voteCount !== 1 ? "s" : ""} (
+                                            {percentage}%)
+                                          </span>
+                                        </div>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+
                               <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
                                 <span>{formatDate(message.createdAt)}</span>
                                 <div className="flex items-center gap-3">
@@ -656,8 +812,8 @@ export default function AttendeeHub() {
                             update.type === "today"
                               ? "border-red-500"
                               : update.type === "upcoming"
-                                ? "border-yellow-500"
-                                : "border-blue-500"
+                              ? "border-yellow-500"
+                              : "border-blue-500"
                           }`}
                         >
                           <div className="flex items-start gap-4">
@@ -666,8 +822,8 @@ export default function AttendeeHub() {
                                 update.type === "today"
                                   ? "bg-red-100 text-red-600"
                                   : update.type === "upcoming"
-                                    ? "bg-yellow-100 text-yellow-600"
-                                    : "bg-blue-100 text-blue-600"
+                                  ? "bg-yellow-100 text-yellow-600"
+                                  : "bg-blue-100 text-blue-600"
                               }`}
                             >
                               {update.type === "today" ? (
@@ -831,36 +987,47 @@ export default function AttendeeHub() {
         </div>
       )}
 
-      {/* PIN Modal */}
-      {showPinModal && (
+      {/* PIN Modal for Invite-Only Registration */}
+      {showPinModal && pinModalEvent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-md p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Enter Attendee PIN</h2>
-            <form onSubmit={handlePinSubmit} className="space-y-4">
-              <div>
-                <input
-                  type="text"
-                  placeholder="Attendee PIN (4 digits)"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  maxLength={4}
-                />
-                {pinError && <p className="text-red-600 text-sm mt-2">{pinError}</p>}
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Enter Attendee PIN</h3>
+            <p className="text-gray-600 mb-4">
+              This is an invite-only event. Please enter the attendee PIN to register for{" "}
+              <span className="font-semibold">{pinModalEvent.title}</span>.
+            </p>
+            <form onSubmit={handlePinSubmit}>
+              <input
+                type="text"
+                placeholder="Enter 4-digit PIN"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-2xl tracking-widest"
+                maxLength={4}
+                autoFocus
+              />
+              {pinError && <p className="text-red-600 text-sm mt-2">{pinError}</p>}
+              <div className="flex gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPinModal(false)
+                    setPinModalEvent(null)
+                    setPinInput("")
+                    setPinError("")
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pinLoading}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {pinLoading ? "Registering..." : "Register"}
+                </button>
               </div>
-              <button
-                type="submit"
-                disabled={pinLoading}
-                className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-50"
-              >
-                {pinLoading ? "Registering..." : "Register"}
-              </button>
-              <button
-                onClick={() => setShowPinModal(false)}
-                className="w-full px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
             </form>
           </div>
         </div>

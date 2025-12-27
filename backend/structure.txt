@@ -1,0 +1,60 @@
+Project Structure
+=================
+Folder PATH listing for volume OS
+Volume serial number is AA90-1F23
+C:\MINI_PROJECT\BACKEND\CONFIG
+    database.js
+    
+No subfolders exist 
+
+Folder PATH listing for volume OS
+Volume serial number is AA90-1F23
+C:\MINI_PROJECT\BACKEND\CONTROLLERS
+    activityController.js
+    authController.js
+    budgetController.js
+    eventController.js
+    feedbackController.js
+    messageController.js
+    notificationController.js
+    registrationController.js
+    
+No subfolders exist 
+
+Folder PATH listing for volume OS
+Volume serial number is AA90-1F23
+C:\MINI_PROJECT\BACKEND\MIDDLEWARE
+    auth.js
+    errorHandler.js
+    multer.js
+    
+No subfolders exist 
+
+Folder PATH listing for volume OS
+Volume serial number is AA90-1F23
+C:\MINI_PROJECT\BACKEND\MODELS
+    Activity.js
+    Attendance.js
+    Event.js
+    Feedback.js
+    Message.js
+    Notification.js
+    Registration.js
+    User.js
+    
+No subfolders exist 
+
+Folder PATH listing for volume OS
+Volume serial number is AA90-1F23
+C:\MINI_PROJECT\BACKEND\ROUTES
+    activites.js
+    activities.js
+    auth.js
+    events.js
+    feedback.js
+    messages.js
+    notifications.js
+    registrations.js
+    
+No subfolders exist 
+
