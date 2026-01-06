@@ -120,15 +120,3 @@ Contributions are welcome. Please:
 Check `SETUP_INSTRUCTIONS.md` for more developer-oriented details.
 
 ---
-
-## License
-MIT
-
----
-
-If you'd like, I can also:
-- Add a CONTRIBUTING.md and CODE_OF_CONDUCT
-- Expand the README with architecture diagrams or example data
-- Align README with your CI/CD or deployment targets
-
-Tell me which additions you prefer. ✅
