@@ -1,0 +1,32 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install dependencies
+        run: |
+          cd backend
+          npm ci
+      - name: Run backend tests
+        env:
+          # If you want to use an external MongoDB, set MONGO_URI as a repo secret
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          JWT_SECRET: testsecret
+        run: |
+          cd backend
+          npm test --silent
